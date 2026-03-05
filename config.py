@@ -1,31 +1,21 @@
-# ============================================================
-# config.py — 本地用直接填值，GitHub Actions 用環境變數
-# ============================================================
 import os
 import json
 
-# --- AI 設定 ---
-AI_PROVIDER  = "groq"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_你的key")
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+AI_PROVIDER    = "groq"
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL     = "llama-3.3-70b-versatile"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_MODEL   = "gpt-4o-mini"
 
-# --- Email 設定 ---
-EMAIL_SENDER    = os.environ.get("EMAIL_SENDER", "your@gmail.com")
-EMAIL_PASSWORD  = os.environ.get("EMAIL_PASSWORD", "your-app-password")
-EMAIL_RECEIVERS = json.loads(os.environ.get("EMAIL_RECEIVERS", '["your@gmail.com"]'))
+EMAIL_SENDER    = os.environ.get("EMAIL_SENDER", "")
+EMAIL_PASSWORD  = os.environ.get("EMAIL_PASSWORD", "")
+EMAIL_RECEIVERS = json.loads(os.environ.get("EMAIL_RECEIVERS", '[""]'))
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
+DB_PATH   = "data/news.db"
+TOP_N     = 5
 
-# --- 資料庫 ---
-DB_PATH = "data/news.db"
-
-# --- 每類 TOP 幾則 ---
-TOP_N = 5
-
-# --- RSS 來源 ---
 RSS_FEEDS = {
     "Finance": [
         "https://feeds.bloomberg.com/markets/news.rss",
