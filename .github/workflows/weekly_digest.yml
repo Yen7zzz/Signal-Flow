@@ -1,0 +1,47 @@
+name: 📧 每週新聞週報
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'   # UTC 00:00 週一 = 台灣時間 08:00 週一
+  workflow_dispatch:
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 拉取程式碼和資料庫
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安裝套件
+        run: pip install groq openai
+
+      - name: 建立 config.py
+        run: |
+          cat > config.py << PYEOF
+          AI_PROVIDER = "groq"
+          GROQ_API_KEY = "${{ secrets.GROQ_API_KEY }}"
+          GROQ_MODEL = "llama-3.3-70b-versatile"
+          OPENAI_API_KEY = ""
+          OPENAI_MODEL = "gpt-4o-mini"
+          EMAIL_SENDER = "${{ secrets.EMAIL_SENDER }}"
+          EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"
+          EMAIL_RECEIVERS = ${{ secrets.EMAIL_RECEIVERS }}
+          SMTP_HOST = "smtp.gmail.com"
+          SMTP_PORT = 587
+          DB_PATH = "data/news.db"
+          TOP_N = 5
+          RSS_FEEDS = {}
+          PYEOF
+
+      - name: 建立必要資料夾
+        run: mkdir -p data logs
+
+      - name: 生成並寄出週報
+        run: python pipeline_b.py

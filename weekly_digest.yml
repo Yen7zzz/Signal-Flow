@@ -1,0 +1,58 @@
+# ============================================================
+# .github/workflows/weekly_digest.yml
+# 每週一早上 09:00（台灣時間）生成週報並寄出
+# ============================================================
+
+name: 📧 每週新聞週報
+
+on:
+  schedule:
+    - cron: '0 1 * * 1'   # UTC 01:00 週一 = 台灣時間 09:00 週一
+  workflow_dispatch:        # 允許手動觸發（測試用）
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1：拉取最新的 repo（包含最新 news.db）
+      - name: 拉取程式碼和資料庫
+        uses: actions/checkout@v4
+
+      # Step 2：安裝 Python
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # Step 3：安裝套件
+      - name: 安裝套件
+        run: pip install groq openai
+
+      # Step 4：建立設定檔
+      - name: 建立 config.py
+        run: |
+          cat > config.py << EOF
+          AI_PROVIDER = "groq"
+          GROQ_API_KEY = "${{ secrets.GROQ_API_KEY }}"
+          GROQ_MODEL = "llama-3.3-70b-versatile"
+          OPENAI_API_KEY = ""
+          OPENAI_MODEL = "gpt-4o-mini"
+          EMAIL_SENDER = "${{ secrets.EMAIL_SENDER }}"
+          EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"
+          EMAIL_RECEIVER = "${{ secrets.EMAIL_RECEIVER }}"
+          SMTP_HOST = "smtp.gmail.com"
+          SMTP_PORT = 587
+          DB_PATH = "data/news.db"
+          TOP_N = 5
+          RSS_FEEDS = {}
+          EOF
+
+      # Step 5：建立資料夾
+      - name: 建立必要資料夾
+        run: mkdir -p data logs
+
+      # Step 6：執行 Pipeline B
+      - name: 生成並寄出週報
+        run: python pipeline_b.py
