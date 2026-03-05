@@ -2,12 +2,17 @@ name: 📥 每日新聞收集
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # UTC 22:00 = 台灣時間 06:00
+    - cron: '0 22 * * *'
   workflow_dispatch:
 
 jobs:
   collect:
     runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
 
     steps:
       - name: 拉取程式碼和資料庫
@@ -23,45 +28,6 @@ jobs:
 
       - name: 安裝套件
         run: pip install feedparser transformers torch sentence-transformers
-
-      - name: 建立 config.py
-        run: |
-          cat > config.py << PYEOF
-          AI_PROVIDER = "groq"
-          GROQ_API_KEY = "${{ secrets.GROQ_API_KEY }}"
-          GROQ_MODEL = "llama-3.3-70b-versatile"
-          OPENAI_API_KEY = ""
-          OPENAI_MODEL = "gpt-4o-mini"
-          EMAIL_SENDER = "${{ secrets.EMAIL_SENDER }}"
-          EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"
-          EMAIL_RECEIVERS = ${{ secrets.EMAIL_RECEIVERS }}
-          SMTP_HOST = "smtp.gmail.com"
-          SMTP_PORT = 587
-          DB_PATH = "data/news.db"
-          TOP_N = 5
-          RSS_FEEDS = {
-              "Finance": [
-                  "https://feeds.bloomberg.com/markets/news.rss",
-                  "https://www.cnbc.com/id/10001147/device/rss/rss.html",
-                  "https://feeds.reuters.com/reuters/businessNews",
-                  "https://www.ft.com/rss/home",
-              ],
-              "Technology": [
-                  "https://feeds.feedburner.com/TechCrunch",
-                  "https://www.theverge.com/rss/index.xml",
-                  "https://hnrss.org/frontpage",
-                  "https://www.engadget.com/rss.xml",
-                  "https://feeds.arstechnica.com/arstechnica/index",
-                  "https://www.wired.com/feed/rss",
-                  "https://www.technologyreview.com/topnews.rss",
-              ],
-              "Politics": [
-                  "https://feeds.bbci.co.uk/news/world/rss.xml",
-                  "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-                  "https://feeds.reuters.com/reuters/worldNews",
-              ],
-          }
-          PYEOF
 
       - name: 建立必要資料夾
         run: mkdir -p data logs
