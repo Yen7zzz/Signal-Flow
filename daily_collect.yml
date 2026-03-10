@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: '0 22 * * *'
   workflow_dispatch:
+
+permissions:           # ← 加這個
+  contents: write      # ← 允許 Actions 寫入 repo
+
 jobs:
   collect:
     runs-on: ubuntu-latest
