@@ -206,5 +206,10 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 preview.html
-data/
+# 忽略整個 data 資料夾的其他檔案
+data/*
+# 但追蹤資料庫本身
+!data/news.db
+
+# logs 全部不追蹤（保護隱私）
 logs/
