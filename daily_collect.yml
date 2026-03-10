@@ -37,4 +37,5 @@ jobs:
           git config user.email "action@github.com"
           git add -f data/news.db
           git diff --staged --quiet || git commit -m "🗞️ 每日新聞更新 $(date '+%Y-%m-%d')"
+          git pull --rebase
           git push
