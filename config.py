@@ -1,5 +1,4 @@
 import os
-import json
 
 AI_PROVIDER    = "groq"
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
@@ -9,7 +8,7 @@ OPENAI_MODEL   = "gpt-4o-mini"
 
 EMAIL_SENDER    = os.environ.get("EMAIL_SENDER", "")
 EMAIL_PASSWORD  = os.environ.get("EMAIL_PASSWORD", "")
-EMAIL_RECEIVERS = json.loads(os.environ.get("EMAIL_RECEIVERS", '[""]'))
+EMAIL_RECEIVERS = os.environ.get("EMAIL_RECEIVERS", "")  # 逗號分隔字串，例如 "a@gmail.com,b@gmail.com"
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587

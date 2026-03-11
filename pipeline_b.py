@@ -17,7 +17,7 @@ from config import (
     GROQ_API_KEY, GROQ_MODEL,
     OPENAI_API_KEY, OPENAI_MODEL,
     EMAIL_SENDER, EMAIL_PASSWORD,
-    EMAIL_RECEIVERS, SMTP_HOST, SMTP_PORT, TOP_N  # ← 改成複數
+    EMAIL_RECEIVERS, SMTP_HOST, SMTP_PORT, TOP_N
 )
 
 import os
@@ -103,7 +103,7 @@ def summarize_category(client, model: str, category: str, articles: list[dict]) 
 
 def build_email_html(summaries_by_category: dict) -> str:
     date_range     = datetime.now().strftime("%Y 年 %m 月 %d 日")
-    category_icons = {"財經": "💰", "科技": "🔬", "政治": "🌏"}
+    category_icons = {"Finance": "💰", "Technology": "🔬", "Politics": "🌏"}
     sections_html  = ""
 
     for category, articles in summaries_by_category.items():
@@ -127,7 +127,7 @@ def build_email_html(summaries_by_category: dict) -> str:
         sections_html += f"""
         <div style="margin-bottom:40px;">
             <h2 style="font-size:20px;color:#222;border-bottom:2px solid #0066cc;padding-bottom:8px;">
-                {icon} {category}新聞 TOP{TOP_N}
+                {icon} {category} TOP{TOP_N}
             </h2>
             {items_html}
         </div>"""
@@ -149,8 +149,8 @@ def build_email_html(summaries_by_category: dict) -> str:
 
 
 def send_email(html_content: str):
-    # EMAIL_RECEIVERS 支援多個收件人，用逗號分隔
-    receivers = [r.strip() for r in EMAIL_RECEIVERS.split(",")]
+    # EMAIL_RECEIVERS 是逗號分隔字串，拆成 list
+    receivers = [r.strip() for r in EMAIL_RECEIVERS.split(",") if r.strip()]
 
     msg            = MIMEMultipart("alternative")
     msg["Subject"] = f"📰 SignalFlow 週報 — {datetime.now().strftime('%Y/%m/%d')}"
@@ -158,7 +158,9 @@ def send_email(html_content: str):
     msg["To"]      = ", ".join(receivers)
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+    # 使用 SMTP + starttls（對應 port 587）
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, receivers, msg.as_string())
 
@@ -185,7 +187,7 @@ def run():
         summaries[category] = summarize_category(client, model, category, articles)
 
     html = build_email_html(summaries)
-    send_email(html)  # ← 取消註解，實際寄信
+    send_email(html)
     print(f"\n🎉 Pipeline B 完成！")
 
 
