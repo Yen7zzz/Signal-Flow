@@ -17,14 +17,14 @@ from config import (
     GROQ_API_KEY, GROQ_MODEL,
     OPENAI_API_KEY, OPENAI_MODEL,
     EMAIL_SENDER, EMAIL_PASSWORD,
-    EMAIL_RECEIVER, SMTP_HOST, SMTP_PORT, TOP_N
+    EMAIL_RECEIVERS, SMTP_HOST, SMTP_PORT, TOP_N  # ← 改成複數
 )
 
 import os
 os.makedirs("logs", exist_ok=True)
 
 logging.basicConfig(
-    filename="logs/pipeline_a.log",
+    filename="logs/pipeline_b.log",
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
@@ -149,18 +149,21 @@ def build_email_html(summaries_by_category: dict) -> str:
 
 
 def send_email(html_content: str):
+    # EMAIL_RECEIVERS 支援多個收件人，用逗號分隔
+    receivers = [r.strip() for r in EMAIL_RECEIVERS.split(",")]
+
     msg            = MIMEMultipart("alternative")
     msg["Subject"] = f"📰 SignalFlow 週報 — {datetime.now().strftime('%Y/%m/%d')}"
     msg["From"]    = EMAIL_SENDER
-    msg["To"]      = EMAIL_RECEIVER
+    msg["To"]      = ", ".join(receivers)
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:  # 改成 SMTP_SSL
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        server.sendmail(EMAIL_SENDER, receivers, msg.as_string())
 
-    print(f"📧 Email 已寄出 → {EMAIL_RECEIVER}")
-    logging.info(f"Email 寄出成功 → {EMAIL_RECEIVER}")
+    print(f"📧 Email 已寄出 → {receivers}")
+    logging.info(f"Email 寄出成功 → {receivers}")
 
 
 def run():
@@ -182,14 +185,8 @@ def run():
         summaries[category] = summarize_category(client, model, category, articles)
 
     html = build_email_html(summaries)
-    # send_email(html)
-    # print(f"\n🎉 Pipeline B 完成！")
-    # 存成 HTML 檔案，直接用瀏覽器打開看
-    with open("preview.html", "w", encoding="utf-8") as f:
-        f.write(html)
-
-    print(f"\n🎉 完成！請用瀏覽器打開 preview.html 查看結果")
-    # send_email(html)  ← 先註解掉
+    send_email(html)  # ← 取消註解，實際寄信
+    print(f"\n🎉 Pipeline B 完成！")
 
 
 if __name__ == "__main__":
