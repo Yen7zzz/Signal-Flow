@@ -37,3 +37,10 @@ RSS_FEEDS = {
         "https://feeds.reuters.com/reuters/worldNews",
     ],
 }
+
+TRACKED_TOPICS = [
+    "AI 晶片",
+    "Fed 利率",
+    "台積電",
+]
+TOPIC_SIMILARITY_THRESHOLD = 0.4
