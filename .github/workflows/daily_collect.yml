@@ -1,0 +1,46 @@
+name: 📥 每日新聞收集
+on:
+  schedule:
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
+    steps:
+      - name: 拉取程式碼和資料庫
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安裝套件
+        run: pip install feedparser transformers torch sentence-transformers trafilatura newspaper3k lxml requests
+
+      - name: 建立必要資料夾
+        run: mkdir -p data logs
+
+      - name: 執行每日新聞收集
+        run: python pipeline_a_transformer.py
+
+      - name: 儲存資料庫回 GitHub
+        run: |
+          git config user.name "SignalFlow Bot"
+          git config user.email "action@github.com"
+          git add -f data/news.db
+          git diff --staged --quiet || git commit -m "🗞️ 每日新聞更新 $(date '+%Y-%m-%d')"
+          git pull --rebase
+          git push
