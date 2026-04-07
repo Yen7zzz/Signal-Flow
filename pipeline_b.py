@@ -16,7 +16,7 @@ from datetime import datetime
 from collections import defaultdict
 from clusterer import NewsClusterer
 from database import (
-    get_recent_articles, save_weekly_digest, get_last_weekly_digest,
+    init_db, get_recent_articles, save_weekly_digest, get_last_weekly_digest,
     save_topic_signal, get_last_topic_signal,
 )
 from config import (
@@ -387,6 +387,7 @@ def run():
     print(f"📊 Pipeline B 開始 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"{'='*50}")
 
+    init_db()
     client, model = get_ai_client()
     all_articles  = get_recent_articles(days=7)
     print(f"\n📦 共撈到 {len(all_articles)} 篇文章")
