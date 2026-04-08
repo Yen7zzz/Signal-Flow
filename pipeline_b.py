@@ -287,6 +287,7 @@ def summarize_single(client, model: str, article: dict) -> dict | None:
         }
     except Exception as e:
         logging.warning(f"Stage 1 摘要失敗 [{article.get('url', '')[:80]}]: {e}")
+        print(f"          ⚠️ 錯誤：{e}")
         return None
 
 
@@ -419,6 +420,7 @@ def summarize_category(client, model: str, category: str, events: list[dict],
     except Exception as e:
         logging.error(f"Stage 2 失敗 ({category}): {e}")
         print(f"   ❌ 失敗：{e}")
+        print(f"          ⚠️ 錯誤：{e}")
         return {"trend": "", "articles": [], "cross_week": None}
 
 
