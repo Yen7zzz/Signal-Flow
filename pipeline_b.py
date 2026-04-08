@@ -38,7 +38,7 @@ logging.basicConfig(
 )
 
 STAGE1_MAX_CHARS = 2000   # full_text 截斷長度（約 500-600 字）
-STAGE1_SLEEP     = 5      # 兩次呼叫之間的最短間隔（Groq 30 RPM = 0.5 req/sec）
+STAGE1_SLEEP     = 2      # 兩次呼叫之間的最短間隔
 STAGE1_RETRIES   = 3      # 429 / RateLimitError 最多重試次數
 
 
@@ -194,12 +194,19 @@ def send_email(html_content: str):
 
 # ── 新增 / 改寫的函式 ─────────────────────────────────────────
 
+class _AnthropicResponseWrapper:
+    """模擬 OpenAI response.choices[0].message.content 介面，供 Anthropic SDK 回傳使用。"""
+    def __init__(self, text: str):
+        self.choices = [type("C", (), {"message": type("M", (), {"content": text})()})()]
+
+
 def _call_with_retry(client, model: str, messages: list[dict],
-                     thinking: bool = False) -> object:
+                     provider: str = "openai", thinking: bool = False) -> object:
     """
     API 呼叫包含 exponential backoff retry。
     429 / RateLimitError → 等 2^(n+1) 秒後重試，最多 STAGE1_RETRIES 次。
     其他例外直接 raise。
+    provider="anthropic" 時使用 client.messages.create() 並包裝成統一介面。
     thinking=True 時（僅 Gemini）加入 generationConfig.thinking_config。
     """
     extra_kwargs = {}
@@ -212,12 +219,20 @@ def _call_with_retry(client, model: str, messages: list[dict],
 
     for attempt in range(STAGE1_RETRIES + 1):
         try:
-            return client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.3,
-                **extra_kwargs,
-            )
+            if provider == "anthropic":
+                resp = client.messages.create(
+                    model=model,
+                    max_tokens=4096,
+                    messages=messages,
+                )
+                return _AnthropicResponseWrapper(resp.content[0].text)
+            else:
+                return client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.3,
+                    **extra_kwargs,
+                )
         except Exception as e:
             err = str(e).lower()
             is_rate_limit = "429" in err or "rate_limit" in err or "ratelimit" in err
@@ -258,7 +273,8 @@ def summarize_single(client, model: str, article: dict) -> dict | None:
 要求：每句以 ① ② ③ 編號開頭，只回傳 JSON，不要其他說明。"""
 
     try:
-        response = _call_with_retry(client, model, [{"role": "user", "content": prompt}])
+        response = _call_with_retry(client, model, [{"role": "user", "content": prompt}],
+                                    provider=STAGE1_PROVIDER)
         raw      = response.choices[0].message.content.strip()
         raw      = raw.replace("```json", "").replace("```", "").strip()
         result   = json.loads(raw)
@@ -379,7 +395,7 @@ def summarize_category(client, model: str, category: str, events: list[dict],
     try:
         use_thinking = STAGE2_THINKING and STAGE2_PROVIDER == "gemini"
         response = _call_with_retry(client, model, [{"role": "user", "content": prompt}],
-                                    thinking=use_thinking)
+                                    provider=STAGE2_PROVIDER, thinking=use_thinking)
         raw      = response.choices[0].message.content.strip()
         raw      = raw.replace("```json", "").replace("```", "").strip()
         result   = json.loads(raw)
