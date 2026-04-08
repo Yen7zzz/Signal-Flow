@@ -2,7 +2,7 @@ import os
 
 # ── Stage 1（逐篇摘要）：不開 thinking ──
 STAGE1_PROVIDER = "anthropic"
-STAGE1_MODEL    = "claude-haiku-4-5-20241022"
+STAGE1_MODEL    = "claude-haiku-4-5-20251001"
 
 # ── Stage 2（排名 + 趨勢分析）：重質量 ──
 STAGE2_PROVIDER = "anthropic"
