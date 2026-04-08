@@ -75,7 +75,7 @@ class NewsClusterer:
 
         # ── 編碼 ─────────────────────────────────────────────────
         texts = [
-            f"{art.get('title', '')}. {art.get('key_points', '')}"
+            f"{art.get('title', '')}. {art.get('key_points') or art.get('summary') or ''}"
             for art in summaries
         ]
         embeddings = self.model.encode(texts, show_progress_bar=False)
@@ -143,7 +143,7 @@ class NewsClusterer:
 
         topic_embeddings   = self.model.encode(topics, show_progress_bar=False)
         article_texts      = [
-            f"{art.get('title', '')}. {art.get('key_points', '')}"
+            f"{art.get('title', '')}. {art.get('key_points') or art.get('summary') or ''}"
             for art in summaries
         ]
         article_embeddings = self.model.encode(article_texts, show_progress_bar=False)
