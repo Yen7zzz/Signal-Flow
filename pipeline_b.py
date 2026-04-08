@@ -38,7 +38,7 @@ logging.basicConfig(
 )
 
 STAGE1_MAX_CHARS = 2000   # full_text 截斷長度（約 500-600 字）
-STAGE1_SLEEP     = 2      # 兩次呼叫之間的最短間隔（Groq 30 RPM = 0.5 req/sec）
+STAGE1_SLEEP     = 5      # 兩次呼叫之間的最短間隔（Groq 30 RPM = 0.5 req/sec）
 STAGE1_RETRIES   = 3      # 429 / RateLimitError 最多重試次數
 
 
