@@ -410,7 +410,7 @@ def run():
     clustered_by_category: dict[str, list[dict]] = {}
     for category, sums in by_category.items():
         print(f"\n   🔗 聚類 {category}（{len(sums)} 篇）...")
-        clustered_by_category[category] = clusterer.cluster_articles(sums)
+        clustered_by_category[category] = clusterer.cluster_articles(sums, distance_threshold=0.55)[:30]
 
     # 從所有事件提取 representatives，組成 flat list 供 Stage 1 使用
     representatives: list[dict] = []
