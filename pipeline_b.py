@@ -449,11 +449,22 @@ def run():
     run_date = datetime.now().strftime("%Y-%m-%d")
 
     # 聚類（在 Stage 1 之前，對原始文章做；clusterer 支援 fallback 到 summary）
-    clusterer = NewsClusterer()
+    try:
+        clusterer = NewsClusterer()
+    except Exception as e:
+        print(f"❌ NewsClusterer 初始化失敗：{e}")
+        logging.error(f"NewsClusterer 初始化失敗：{e}")
+        return
+
     clustered_by_category: dict[str, list[dict]] = {}
     for category, sums in by_category.items():
         print(f"\n   🔗 聚類 {category}（{len(sums)} 篇）...")
-        clustered_by_category[category] = clusterer.cluster_articles(sums, distance_threshold=0.55)[:30]
+        try:
+            clustered_by_category[category] = clusterer.cluster_articles(sums, distance_threshold=0.55)[:30]
+        except Exception as e:
+            print(f"   ❌ 聚類 {category} 失敗：{e}")
+            logging.error(f"cluster_articles 失敗 ({category})：{e}")
+            clustered_by_category[category] = []
 
     # 從所有事件提取 representatives，組成 flat list 供 Stage 1 使用
     representatives: list[dict] = []
