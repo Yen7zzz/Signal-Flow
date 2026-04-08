@@ -390,38 +390,68 @@ def run():
     init_db()
     client, model = get_ai_client()
     all_articles  = get_recent_articles(days=7)
-    print(f"\n📦 共撈到 {len(all_articles)} 篇文章")
+    total         = len(all_articles)
+    print(f"\n📦 共撈到 {total} 篇文章")
 
     if not all_articles:
         print("⚠️  無文章，Pipeline B 結束")
         logging.warning("Pipeline B：無文章可處理")
         return
 
-    # Stage 1：逐篇摘要
-    stage1_results = run_stage1(client, model, all_articles)
+    # 依分類分組（DB 原始文章，有 title + summary，無 key_points）
+    by_category: dict[str, list[dict]] = defaultdict(list)
+    for a in all_articles:
+        by_category[a["category"]].append(a)
+
+    run_date = datetime.now().strftime("%Y-%m-%d")
+
+    # 聚類（在 Stage 1 之前，對原始文章做；clusterer 支援 fallback 到 summary）
+    clusterer = NewsClusterer()
+    clustered_by_category: dict[str, list[dict]] = {}
+    for category, sums in by_category.items():
+        print(f"\n   🔗 聚類 {category}（{len(sums)} 篇）...")
+        clustered_by_category[category] = clusterer.cluster_articles(sums)
+
+    # 從所有事件提取 representatives，組成 flat list 供 Stage 1 使用
+    representatives: list[dict] = []
+    for events in clustered_by_category.values():
+        for event in events:
+            representatives.append(event["representative"])
+
+    n_clusters        = sum(len(evts) for evts in clustered_by_category.values())
+    n_representatives = len(representatives)
+
+    # Stage 1：只對 representatives 做 LLM 摘要
+    stage1_results = run_stage1(client, model, representatives)
+    n_success      = len(stage1_results)
+
+    print(f"\n📊 漏斗：{total}篇 → {n_clusters}個事件 → {n_representatives}篇進 Stage 1 → {n_success}篇成功")
+    logging.info(f"漏斗：{total} → {n_clusters}事件 → {n_representatives}篇 → {n_success}成功")
 
     if not stage1_results:
         print("⚠️  Stage 1 無成功結果，Pipeline B 結束")
         logging.warning("Pipeline B：Stage 1 無成功結果")
         return
 
-    # 依分類分組
-    by_category = defaultdict(list)
-    for s in stage1_results:
-        by_category[s["category"]].append(s)
+    # 把 stage1 結果回掛到對應 event 的 representative（O(1) lookup by URL）
+    stage1_by_url: dict[str, dict] = {r["url"]: r for r in stage1_results}
 
-    run_date = datetime.now().strftime("%Y-%m-%d")
-
-    # Stage 1.5：主題聚類
-    clusterer = NewsClusterer()
-    clustered_by_category = {}
-    for category, sums in by_category.items():
-        print(f"\n   🔗 聚類 {category}（{len(sums)} 篇）...")
-        clustered_by_category[category] = clusterer.cluster_articles(sums)
+    for category, events in clustered_by_category.items():
+        enriched_events = []
+        for event in events:
+            rep = event["representative"]
+            s1  = stage1_by_url.get(rep["url"])
+            if s1 is None:
+                # Stage 1 失敗的 representative → 移除整個 event
+                continue
+            # 把 key_points 寫回 representative，其餘欄位保留原值
+            rep["key_points"] = s1["key_points"]
+            enriched_events.append(event)
+        clustered_by_category[category] = enriched_events
 
     # Stage 2：跨文章選 TOP5 + 識別趨勢 + 跨週比較
     print(f"\n🏆 Stage 2：跨文章排名（{len(clustered_by_category)} 個分類）")
-    summaries = {}
+    summaries: dict = {}
     for category, events in clustered_by_category.items():
         last_digest = get_last_weekly_digest(category)
         if last_digest:
@@ -437,7 +467,7 @@ def run():
     print(f"\n💾 本週週報已存入 DB（run_date={run_date}）")
     logging.info(f"本週週報存入 DB，run_date={run_date}")
 
-    # Stage 3：訊號追蹤
+    # Stage 3：訊號追蹤（用有 key_points 的 representatives）
     topic_signals: dict = {}
     if TRACKED_TOPICS:
         print(f"\n📡 訊號追蹤（{len(TRACKED_TOPICS)} 個主題）")
@@ -445,8 +475,8 @@ def run():
         for topic, matched in topic_hits.items():
             hit_count = len(matched)
             hit_urls  = [a["url"] for a in matched]
-            last      = get_last_topic_signal(topic)        # 先查上週
-            save_topic_signal(run_date, topic, hit_count, hit_urls)  # 再存本週
+            last      = get_last_topic_signal(topic)
+            save_topic_signal(run_date, topic, hit_count, hit_urls)
             previous  = last["hit_count"] if last else None
             if previous is None:
                 trend = "🆕"
