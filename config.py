@@ -6,7 +6,7 @@ STAGE1_MODEL    = "claude-haiku-4-5-20251001"
 
 # ── Stage 2（排名 + 趨勢分析）：重質量 ──
 STAGE2_PROVIDER = "anthropic"
-STAGE2_MODEL    = "claude-sonnet-4-6-20250514"
+STAGE2_MODEL    = "claude-sonnet-4-6"
 STAGE2_THINKING = False
 
 GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "")
