@@ -1,13 +1,13 @@
 import os
 
 # ── Stage 1（逐篇摘要）：不開 thinking ──
-STAGE1_PROVIDER = "gemini"
-STAGE1_MODEL    = "gemini-2.5-flash"
+STAGE1_PROVIDER = "anthropic"
+STAGE1_MODEL    = "claude-haiku-4-5-20241022"
 
-# ── Stage 2（排名 + 趨勢分析）：開 thinking ──
-STAGE2_PROVIDER = "gemini"
-STAGE2_MODEL    = "gemini-2.5-flash"
-STAGE2_THINKING = True
+# ── Stage 2（排名 + 趨勢分析）：重質量 ──
+STAGE2_PROVIDER = "anthropic"
+STAGE2_MODEL    = "claude-sonnet-4-6-20250514"
+STAGE2_THINKING = False
 
 GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "")
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
