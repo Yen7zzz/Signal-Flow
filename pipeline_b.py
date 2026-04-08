@@ -20,9 +20,9 @@ from database import (
     save_topic_signal, get_last_topic_signal,
 )
 from config import (
-    AI_PROVIDER,
-    GROQ_API_KEY, GROQ_MODEL,
-    OPENAI_API_KEY, OPENAI_MODEL,
+    STAGE1_PROVIDER, STAGE1_MODEL,
+    STAGE2_PROVIDER, STAGE2_MODEL, STAGE2_THINKING,
+    GROQ_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
     EMAIL_SENDER, EMAIL_PASSWORD,
     EMAIL_RECEIVERS, SMTP_HOST, SMTP_PORT, TOP_N,
     TRACKED_TOPICS, TOPIC_SIMILARITY_THRESHOLD,
@@ -44,19 +44,30 @@ STAGE1_RETRIES   = 3      # 429 / RateLimitError 最多重試次數
 
 # ── 不動的函式 ────────────────────────────────────────────────
 
-def get_ai_client():
+def get_ai_client(provider: str, model: str):
     """
-    Groq 和 OpenAI 的 SDK 介面完全相同
-    切換只需改 config.py 的 AI_PROVIDER
+    依 provider 建立對應的 API client，回傳 (client, model)。
+    支援：groq / openai / gemini / anthropic
     """
-    if AI_PROVIDER == "groq":
+    if provider == "groq":
         from groq import Groq
-        print(f"🤖 使用 Groq（{GROQ_MODEL}）— 免費測試模式")
-        return Groq(api_key=GROQ_API_KEY), GROQ_MODEL
-    else:
+        print(f"🤖 Stage client：Groq（{model}）")
+        return Groq(api_key=GROQ_API_KEY), model
+    elif provider == "gemini":
         from openai import OpenAI
-        print(f"🤖 使用 OpenAI（{OPENAI_MODEL}）")
-        return OpenAI(api_key=OPENAI_API_KEY), OPENAI_MODEL
+        print(f"🤖 Stage client：Gemini（{model}）")
+        return OpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=GEMINI_API_KEY,
+        ), model
+    elif provider == "anthropic":
+        import anthropic
+        print(f"🤖 Stage client：Anthropic（{model}）")
+        return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY), model
+    else:  # openai（預設）
+        from openai import OpenAI
+        print(f"🤖 Stage client：OpenAI（{model}）")
+        return OpenAI(api_key=OPENAI_API_KEY), model
 
 
 def build_email_html(summaries_by_category: dict, topic_signals: dict | None = None) -> str:
@@ -183,18 +194,29 @@ def send_email(html_content: str):
 
 # ── 新增 / 改寫的函式 ─────────────────────────────────────────
 
-def _call_with_retry(client, model: str, messages: list[dict]) -> object:
+def _call_with_retry(client, model: str, messages: list[dict],
+                     thinking: bool = False) -> object:
     """
     API 呼叫包含 exponential backoff retry。
     429 / RateLimitError → 等 2^(n+1) 秒後重試，最多 STAGE1_RETRIES 次。
     其他例外直接 raise。
+    thinking=True 時（僅 Gemini）加入 generationConfig.thinking_config。
     """
+    extra_kwargs = {}
+    if thinking:
+        extra_kwargs["extra_body"] = {
+            "generationConfig": {
+                "thinking_config": {"thinking_budget": 2048}
+            }
+        }
+
     for attempt in range(STAGE1_RETRIES + 1):
         try:
             return client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.3,
+                **extra_kwargs,
             )
         except Exception as e:
             err = str(e).lower()
@@ -355,7 +377,9 @@ def summarize_category(client, model: str, category: str, events: list[dict],
         )
 
     try:
-        response = _call_with_retry(client, model, [{"role": "user", "content": prompt}])
+        use_thinking = STAGE2_THINKING and STAGE2_PROVIDER == "gemini"
+        response = _call_with_retry(client, model, [{"role": "user", "content": prompt}],
+                                    thinking=use_thinking)
         raw      = response.choices[0].message.content.strip()
         raw      = raw.replace("```json", "").replace("```", "").strip()
         result   = json.loads(raw)
@@ -388,7 +412,8 @@ def run():
     print(f"{'='*50}")
 
     init_db()
-    client, model = get_ai_client()
+    stage1_client, stage1_model = get_ai_client(STAGE1_PROVIDER, STAGE1_MODEL)
+    stage2_client, stage2_model = get_ai_client(STAGE2_PROVIDER, STAGE2_MODEL)
     all_articles  = get_recent_articles(days=7)
     total         = len(all_articles)
     print(f"\n📦 共撈到 {total} 篇文章")
@@ -422,7 +447,7 @@ def run():
     n_representatives = len(representatives)
 
     # Stage 1：只對 representatives 做 LLM 摘要
-    stage1_results = run_stage1(client, model, representatives)
+    stage1_results = run_stage1(stage1_client, stage1_model, representatives)
     n_success      = len(stage1_results)
 
     print(f"\n📊 漏斗：{total}篇 → {n_clusters}個事件 → {n_representatives}篇進 Stage 1 → {n_success}篇成功")
@@ -458,7 +483,7 @@ def run():
             print(f"\n   🔍 處理 {category}（{len(events)} 個事件，有上週資料：{last_digest['run_date']}）...")
         else:
             print(f"\n   🔍 處理 {category}（{len(events)} 個事件，無上週資料）...")
-        summaries[category] = summarize_category(client, model, category, events,
+        summaries[category] = summarize_category(stage2_client, stage2_model, category, events,
                                                   last_digest=last_digest)
 
     # 存入本週週報（供下週跨週比較使用）

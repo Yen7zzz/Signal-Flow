@@ -1,10 +1,18 @@
 import os
 
-AI_PROVIDER    = "groq"
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL     = "llama-3.3-70b-versatile"
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL   = "gpt-4o-mini"
+# ── Stage 1（逐篇摘要）：不開 thinking ──
+STAGE1_PROVIDER = "gemini"
+STAGE1_MODEL    = "gemini-2.5-flash"
+
+# ── Stage 2（排名 + 趨勢分析）：開 thinking ──
+STAGE2_PROVIDER = "gemini"
+STAGE2_MODEL    = "gemini-2.5-flash"
+STAGE2_THINKING = True
+
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "")
+OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 EMAIL_SENDER    = os.environ.get("EMAIL_SENDER", "")
 EMAIL_PASSWORD  = os.environ.get("EMAIL_PASSWORD", "")
