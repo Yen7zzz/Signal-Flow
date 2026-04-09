@@ -37,9 +37,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-STAGE1_MAX_CHARS = 2000   # full_text 截斷長度（約 500-600 字）
-STAGE1_SLEEP     = 2      # 兩次呼叫之間的最短間隔
-STAGE1_RETRIES   = 3      # 429 / RateLimitError 最多重試次數
+STAGE1_MAX_CHARS  = 1000   # full_text 截斷長度（約 500-600 字）
+STAGE1_SLEEP      = 2      # 批次呼叫之間的最短間隔
+STAGE1_RETRIES    = 3      # 429 / RateLimitError 最多重試次數
+STAGE1_BATCH_SIZE = 5      # 每批送給 LLM 的文章篇數
 
 
 # ── 不動的函式 ────────────────────────────────────────────────
@@ -291,24 +292,94 @@ def summarize_single(client, model: str, article: dict) -> dict | None:
         return None
 
 
+def summarize_batch(client, model: str, articles: list[dict]) -> list[dict]:
+    """
+    Stage 1 批次版：將多篇文章組成一個 prompt，一次 LLM 呼叫取得全部 key_points。
+    回傳成功解析的 result dict list（失敗的篇數直接略過，不中斷整批）。
+    """
+    # 組裝每篇內容區塊
+    blocks = []
+    for i, article in enumerate(articles, 1):
+        text = (article.get("full_text") or "")[:STAGE1_MAX_CHARS].strip()
+        if not text:
+            text = (article.get("summary") or "").strip()
+        blocks.append(
+            f"## 文章 {i}\n"
+            f"標題：{article['title']}\n"
+            f"來源：{article.get('source', '')}\n"
+            f"內容：\n{text}"
+        )
+
+    n = len(articles)
+    prompt = f"""你是專業新聞分析師。以下有 {n} 篇新聞，請為每篇提取關鍵資訊。
+
+{chr(10).join(blocks)}
+
+請用繁體中文，以 JSON array 格式回傳分析結果，每個 element 包含：
+- index：對應文章編號（整數，從 1 開始）
+- key_points：3-5句結構化摘要，依序包含：①核心事件或決策 ②具體數據或當事方 ③潛在影響或後續發展
+
+格式：
+[
+  {{"index": 1, "key_points": "①... ②... ③..."}},
+  {{"index": 2, "key_points": "①... ②... ③..."}}
+]
+
+每句以 ① ② ③ 編號開頭，只回傳 JSON array，不要其他說明。"""
+
+    try:
+        response = _call_with_retry(client, model, [{"role": "user", "content": prompt}],
+                                    provider=STAGE1_PROVIDER)
+        raw = response.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(raw)
+    except Exception as e:
+        logging.warning(f"summarize_batch JSON 解析失敗：{e}")
+        print(f"      ⚠️ 批次呼叫失敗：{e}")
+        return []
+
+    results = []
+    index_map = {i + 1: article for i, article in enumerate(articles)}
+    for item in parsed:
+        try:
+            idx = int(item["index"])
+            article = index_map.get(idx)
+            if article is None:
+                continue
+            results.append({
+                "title":      article["title"],
+                "url":        article["url"],
+                "source":     article.get("source", ""),
+                "category":   article["category"],
+                "key_points": item.get("key_points", ""),
+            })
+        except Exception as e:
+            logging.warning(f"summarize_batch 單篇解析失敗 index={item.get('index')}: {e}")
+
+    return results
+
+
 def run_stage1(client, model: str, articles: list[dict]) -> list[dict]:
     """
-    逐篇呼叫 summarize_single()，每次呼叫後 sleep(STAGE1_SLEEP) 控制 rate limit。
-    印出進度 [i/total]，回傳成功的摘要 list。
+    將 articles 切成每批 STAGE1_BATCH_SIZE 篇，逐批呼叫 summarize_batch()。
+    批次間 sleep(STAGE1_SLEEP) 控制 rate limit，印出批次進度，回傳成功的摘要 list。
     """
-    total   = len(articles)
-    results = []
+    total      = len(articles)
+    n_batches  = (total + STAGE1_BATCH_SIZE - 1) // STAGE1_BATCH_SIZE
+    results    = []
 
-    print(f"\n📝 Stage 1：單篇摘要（{total} 篇，每次間隔 {STAGE1_SLEEP}s）")
+    print(f"\n📝 Stage 1：批次摘要（{total} 篇，批次大小 {STAGE1_BATCH_SIZE}，共 {n_batches} 批）")
 
-    for i, article in enumerate(articles, 1):
-        print(f"   [{i:3d}/{total}] {article['title'][:60]}")
-        result = summarize_single(client, model, article)
-        if result:
-            results.append(result)
-        else:
-            print(f"          ❌ 略過")
-        if i < total:            # 最後一篇不需要等
+    for batch_idx in range(n_batches):
+        start = batch_idx * STAGE1_BATCH_SIZE
+        batch = articles[start: start + STAGE1_BATCH_SIZE]
+        print(f"   [批次 {batch_idx + 1}/{n_batches}] 處理 {len(batch)} 篇...")
+
+        batch_results = summarize_batch(client, model, batch)
+        results.extend(batch_results)
+        print(f"      ✅ 本批成功 {len(batch_results)} / {len(batch)} 篇")
+
+        if batch_idx < n_batches - 1:   # 最後一批不需要等
             time.sleep(STAGE1_SLEEP)
 
     success = len(results)
@@ -460,7 +531,7 @@ def run():
     for category, sums in by_category.items():
         print(f"\n   🔗 聚類 {category}（{len(sums)} 篇）...")
         try:
-            clustered_by_category[category] = clusterer.cluster_articles(sums, distance_threshold=0.55)[:30]
+            clustered_by_category[category] = clusterer.cluster_articles(sums, distance_threshold=0.55)[:15]
         except Exception as e:
             print(f"   ❌ 聚類 {category} 失敗：{e}")
             logging.error(f"cluster_articles 失敗 ({category})：{e}")

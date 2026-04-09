@@ -4,11 +4,42 @@
 # ============================================================
 
 import logging
+import re
 import requests
 import trafilatura
 from newspaper import Article
 
 logger = logging.getLogger(__name__)
+
+_TAIL_CUT_RE = re.compile(
+    r'related articles|related stories|recommended|stay connected|'
+    r'get the latest|subscribe|sign up for|newsletter|more from|'
+    r'popular stories|trending|you may also like|read next|don\'t miss',
+    re.IGNORECASE,
+)
+_MULTI_BLANK_RE = re.compile(r'\n{3,}')
+_MIN_LENGTH = 200
+
+
+def clean_full_text(text: str) -> str | None:
+    """
+    清理 trafilatura / newspaper3k 回傳的全文：
+    1. TAIL CTA 截斷：遇到 CTA 關鍵字行，從該行起整段截掉
+    2. 連續空行壓縮：3+ 個換行 → 2 個換行
+    3. 最低長度門檻：清理後 < 200 字 → return None
+    """
+    lines = text.split('\n')
+    cutoff = len(lines)
+    for i, line in enumerate(lines):
+        if _TAIL_CUT_RE.search(line):
+            cutoff = i
+            break
+    cleaned = '\n'.join(lines[:cutoff])
+    cleaned = _MULTI_BLANK_RE.sub('\n\n', cleaned).strip()
+    if len(cleaned) < _MIN_LENGTH:
+        return None
+    return cleaned
+
 
 HEADERS = {
     "User-Agent": (
@@ -44,7 +75,7 @@ def fetch_full_text(url: str, timeout: int = 10) -> str | None:
             no_fallback=False,     # 允許 trafilatura 內部 fallback
         )
         if text and text.strip():
-            return text.strip()
+            return clean_full_text(text)
     except Exception as e:
         logger.warning(f"⚠️  trafilatura 解析失敗 [{url[:80]}]: {e}")
 
@@ -55,7 +86,7 @@ def fetch_full_text(url: str, timeout: int = 10) -> str | None:
         article.parse()
         text = article.text
         if text and text.strip():
-            return text.strip()
+            return clean_full_text(text)
     except Exception as e:
         logger.warning(f"⚠️  newspaper3k fallback 失敗 [{url[:80]}]: {e}")
 
