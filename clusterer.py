@@ -124,39 +124,65 @@ class NewsClusterer:
     def track_topics(
         self,
         summaries: list[dict],
-        topics: list[str],
+        topics: dict[str, list[str]],
         threshold: float = 0.4,
     ) -> dict[str, list[dict]]:
         """
         偵測每個追蹤主題在本週摘要中的命中文章。
+        每個主題提供英文別名 list，取所有別名中的最高 similarity 作為匹配分數。
 
         Args:
             summaries:  Stage 1 結果，每個 dict 含 title, key_points, url, source, category
-            topics:     追蹤主題字串列表，例如 ["AI 晶片", "Fed 利率"]
+            topics:     {中文顯示名: [英文別名, ...]}，例如 {"AI 晶片": ["AI chip", "GPU", ...]}
             threshold:  cosine similarity 門檻，超過視為命中
 
         Returns:
             {"AI 晶片": [matched_article_dicts, ...], "Fed 利率": [...], ...}
         """
-        if not topics:
+        if not topics or not summaries:
             return {}
 
-        topic_embeddings   = self.model.encode(topics, show_progress_bar=False)
-        article_texts      = [
+        # ── 編碼文章（一次） ──────────────────────────────────────
+        article_texts = [
             f"{art.get('title', '')}. {art.get('key_points') or art.get('summary') or ''}"
             for art in summaries
         ]
         article_embeddings = self.model.encode(article_texts, show_progress_bar=False)
 
-        # shape: (n_articles, n_topics)
-        sim_matrix = cosine_similarity(article_embeddings, topic_embeddings)
+        # ── 把所有主題的別名 flatten，一次編碼 ───────────────────
+        topic_names: list[str] = list(topics.keys())
+        # alias_groups[i] = 第 i 個主題的別名 list（含中文 key 本身）
+        alias_groups: list[list[str]] = [
+            [name] + aliases for name, aliases in topics.items()
+        ]
+        # flat list，並記錄每個 alias 屬於哪個主題 index
+        flat_aliases: list[str] = []
+        alias_topic_idx: list[int] = []
+        for topic_idx, aliases in enumerate(alias_groups):
+            for alias in aliases:
+                flat_aliases.append(alias)
+                alias_topic_idx.append(topic_idx)
 
+        alias_embeddings = self.model.encode(flat_aliases, show_progress_bar=False)
+
+        # ── 計算 similarity，shape: (n_articles, n_flat_aliases) ──
+        sim_flat = cosine_similarity(article_embeddings, alias_embeddings)
+
+        # ── 對每個主題取其所有別名的最大 similarity ───────────────
+        n_topics   = len(topic_names)
+        n_articles = len(summaries)
+        # max_sim[i, j] = 第 i 篇文章對第 j 個主題的最高別名 similarity
+        max_sim = np.full((n_articles, n_topics), -1.0)
+        for col, t_idx in enumerate(alias_topic_idx):
+            max_sim[:, t_idx] = np.maximum(max_sim[:, t_idx], sim_flat[:, col])
+
+        # ── 按門檻篩選命中 ────────────────────────────────────────
         results: dict[str, list[dict]] = {}
-        for j, topic in enumerate(topics):
+        for j, topic in enumerate(topic_names):
             matched = [
                 summaries[i]
-                for i in range(len(summaries))
-                if sim_matrix[i, j] > threshold
+                for i in range(n_articles)
+                if max_sim[i, j] > threshold
             ]
             results[topic] = matched
             print(f"  📡 {topic}：命中 {len(matched)} 篇")

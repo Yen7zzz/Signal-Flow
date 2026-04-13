@@ -46,9 +46,9 @@ RSS_FEEDS = {
     ],
 }
 
-TRACKED_TOPICS = [
-    "AI 晶片",
-    "Fed 利率",
-    "台積電",
-]
+TRACKED_TOPICS = {
+    "AI 晶片": ["AI chip", "semiconductor", "GPU", "AI accelerator", "NPU", "neural processing"],
+    "Fed 利率": ["Federal Reserve", "interest rate", "Fed rate", "FOMC", "rate cut", "rate hike", "monetary policy"],
+    "台積電":   ["TSMC", "Taiwan Semiconductor", "TSMC earnings", "chip foundry"],
+}
 TOPIC_SIMILARITY_THRESHOLD = 0.4
