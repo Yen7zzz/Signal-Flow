@@ -92,11 +92,14 @@ def build_email_html(summaries_by_category: dict, topic_signals: dict | None = N
             </div>""" if trend else ""
         cross_week_html = ""
         if cross_week:
-            continuing = "、".join(cross_week.get("continuing", []))
-            emerging   = "、".join(cross_week.get("emerging", []))
-            parts      = ""
-            if continuing:
-                parts += f"🔄 延續議題：{continuing}<br>"
+            with_update = "、".join(cross_week.get("continuing_with_update", []))
+            no_update   = "、".join(cross_week.get("continuing_no_update", []))
+            emerging    = "、".join(cross_week.get("emerging", []))
+            parts       = ""
+            if with_update:
+                parts += f"🔄 延續（有新進展）：{with_update}<br>"
+            if no_update:
+                parts += f"<span style='color:#aaa'>⏸️ 延續（無新進展，已降權）：{no_update}</span><br>"
             if emerging:
                 parts += f"🆕 新興議題：{emerging}"
             if parts:
@@ -194,13 +197,16 @@ def save_digest_file(summaries: dict, topic_signals: dict, run_date: str) -> str
             lines.append(f"📈 本週趨勢：{trend}")
             lines.append("")
         if cross_week:
-            continuing = "、".join(cross_week.get("continuing", []))
-            emerging   = "、".join(cross_week.get("emerging", []))
-            if continuing:
-                lines.append(f"🔄 延續議題：{continuing}")
+            with_update = "、".join(cross_week.get("continuing_with_update", []))
+            no_update   = "、".join(cross_week.get("continuing_no_update", []))
+            emerging    = "、".join(cross_week.get("emerging", []))
+            if with_update:
+                lines.append(f"🔄 延續（有新進展）：{with_update}")
+            if no_update:
+                lines.append(f"⏸️ 延續（無新進展，已降權）：{no_update}")
             if emerging:
                 lines.append(f"🆕 新興議題：{emerging}")
-            if continuing or emerging:
+            if with_update or no_update or emerging:
                 lines.append("")
         for item in articles:
             rank   = item.get("rank", "")
@@ -517,10 +523,16 @@ def summarize_category(client, model: str, category: str, events: list[dict],
 上週 TOP{TOP_N}：
 {last_titles}
 
+**排名規則（嚴格執行）：**
+- 「延續但無新進展」：與上週 TOP 條目高度重疊、本週無實質突破的事件，應讓位給新議題，排名後置或不選入。
+- 「延續且有重大更新」：同一事件本週出現政策轉向、談判破裂、新數據等實質進展，可保留高排名，但須在 key_points 中明確說明新進展為何。
+- 「本週新浮現」：上週未出現的新議題，優先選入 TOP{TOP_N}。
+
 請額外分析跨週變化，在 JSON 中加入：
 "cross_week": {{
-  "continuing": ["延續上週的趨勢或議題（1-2項）"],
-  "emerging": ["本週新出現的重要議題（1-2項）"]
+  "continuing_with_update": ["延續上週且本週有重大新進展的議題（說明新進展，1-2項）"],
+  "continuing_no_update": ["延續上週但本週無實質新進展、已降權或未選入的議題（1-2項）"],
+  "emerging": ["本週新浮現的重要議題（1-2項）"]
 }}"""
         # 插在「只回傳 JSON」之前
         prompt = prompt.replace(
@@ -547,7 +559,7 @@ def summarize_category(client, model: str, category: str, events: list[dict],
             print(f"   📈 趨勢：{trend}")
             logging.info(f"{category} 趨勢：{trend}")
         if cross_week:
-            print(f"   🔄 跨週觀察：延續 {len(cross_week.get('continuing', []))} 項，新興 {len(cross_week.get('emerging', []))} 項")
+            print(f"   🔄 跨週觀察：延續有更新 {len(cross_week.get('continuing_with_update', []))} 項，降權 {len(cross_week.get('continuing_no_update', []))} 項，新興 {len(cross_week.get('emerging', []))} 項")
 
         print(f"   ✅ AI 完成 {category} TOP{TOP_N} 整理")
         return {"trend": trend, "articles": articles, "cross_week": cross_week}
