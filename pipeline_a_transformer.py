@@ -9,9 +9,11 @@
 import feedparser
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from database import init_db, save_article, article_exists
+from database import init_db, save_article, article_exists, update_full_text
 from classifier import NewsClassifier
+from scraper import fetch_full_text
 from config import RSS_FEEDS
 import os
 
@@ -71,6 +73,7 @@ def run():
 
     total_fetched = 0
     total_saved   = 0
+    newly_saved_urls = []   # 收集本次新存入的 URL，供全文抓取使用
 
     for category, feed_urls in RSS_FEEDS.items():
         print(f"\n📂 分類：{category}")
@@ -103,6 +106,37 @@ def run():
                 )
                 if saved:
                     total_saved += 1
+                    newly_saved_urls.append(article["url"])
+
+    # ── Step 4：並行抓取全文（只針對本次新存入的文章）──────────────
+    if newly_saved_urls:
+        print(f"\n📄 全文抓取中（{len(newly_saved_urls)} 篇，workers=5）...")
+        ft_success = 0
+        ft_failure = 0
+
+        def _fetch_and_store(url: str) -> tuple[str, bool]:
+            text = fetch_full_text(url)
+            if text:
+                update_full_text(url, text)
+                return url, True
+            return url, False
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(_fetch_and_store, u): u for u in newly_saved_urls}
+            for i, future in enumerate(as_completed(futures), 1):
+                try:
+                    _, ok = future.result()
+                except Exception as e:
+                    ok = False
+                    logging.warning(f"全文抓取異常 {futures[future]}: {e}")
+                if ok:
+                    ft_success += 1
+                else:
+                    ft_failure += 1
+                print(f"   [{i}/{len(newly_saved_urls)}] {'✅' if ok else '❌'} {futures[future][:70]}")
+
+        print(f"\n   全文抓取完成：成功 {ft_success} 篇，失敗 {ft_failure} 篇")
+        logging.info(f"全文抓取：成功 {ft_success}，失敗 {ft_failure}")
 
     print(f"\n{'='*50}")
     print(f"🎉 完成！")

@@ -1,10 +1,18 @@
 import os
 
-AI_PROVIDER    = "groq"
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL     = "llama-3.3-70b-versatile"
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL   = "gpt-4o-mini"
+# ── Stage 1（逐篇摘要）：不開 thinking ──
+STAGE1_PROVIDER = "anthropic"
+STAGE1_MODEL    = "claude-haiku-4-5-20251001"
+
+# ── Stage 2（排名 + 趨勢分析）：重質量 ──
+STAGE2_PROVIDER = "anthropic"
+STAGE2_MODEL    = "claude-sonnet-4-6"
+STAGE2_THINKING = False
+
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "")
+OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 EMAIL_SENDER    = os.environ.get("EMAIL_SENDER", "")
 EMAIL_PASSWORD  = os.environ.get("EMAIL_PASSWORD", "")
@@ -37,3 +45,10 @@ RSS_FEEDS = {
         "https://feeds.reuters.com/reuters/worldNews",
     ],
 }
+
+TRACKED_TOPICS = {
+    "AI 晶片": ["AI chip", "semiconductor", "GPU", "AI accelerator", "NPU", "neural processing"],
+    "Fed 利率": ["Federal Reserve", "interest rate", "Fed rate", "FOMC", "rate cut", "rate hike", "monetary policy"],
+    "台積電":   ["TSMC", "Taiwan Semiconductor", "TSMC earnings", "chip foundry"],
+}
+TOPIC_SIMILARITY_THRESHOLD = 0.4
