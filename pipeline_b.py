@@ -176,6 +176,67 @@ def build_email_html(summaries_by_category: dict, topic_signals: dict | None = N
     """
 
 
+def save_digest_file(summaries: dict, topic_signals: dict, run_date: str) -> str:
+    os.makedirs("digests", exist_ok=True)
+    display_date = run_date.replace("-", "/")
+    lines = [f"# SignalFlow 週報 — {display_date}", ""]
+
+    for category, result in summaries.items():
+        articles   = result.get("articles", [])   if isinstance(result, dict) else result
+        trend      = result.get("trend", "")      if isinstance(result, dict) else ""
+        cross_week = result.get("cross_week")     if isinstance(result, dict) else None
+        if not articles:
+            continue
+
+        lines.append(f"## {category}")
+        lines.append("")
+        if trend:
+            lines.append(f"📈 本週趨勢：{trend}")
+            lines.append("")
+        if cross_week:
+            continuing = "、".join(cross_week.get("continuing", []))
+            emerging   = "、".join(cross_week.get("emerging", []))
+            if continuing:
+                lines.append(f"🔄 延續議題：{continuing}")
+            if emerging:
+                lines.append(f"🆕 新興議題：{emerging}")
+            if continuing or emerging:
+                lines.append("")
+        for item in articles:
+            rank   = item.get("rank", "")
+            title  = item.get("title", "")
+            source = item.get("source", "")
+            kp     = item.get("key_points", "")
+            url    = item.get("url", "")
+            lines.append(f"### #{rank}｜{title}")
+            lines.append("")
+            lines.append(f"- **來源**：{source}")
+            lines.append(f"- **重點**：{kp}")
+            lines.append(f"- **URL**：{url}")
+            lines.append("")
+
+    lines.append("## 📡 訊號追蹤")
+    lines.append("")
+    if topic_signals:
+        for topic, sig in topic_signals.items():
+            current  = sig["current"]
+            previous = sig["previous"]
+            trend    = sig["trend"]
+            if previous is None:
+                prev_text = "首次追蹤"
+            else:
+                prev_text = f"上週 {previous} 篇 {trend}"
+            lines.append(f"- {topic}：{current} 篇（{prev_text}）")
+    lines.append("")
+    lines.append("---")
+    lines.append("本檔案由 SignalFlow pipeline_b 自動生成")
+
+    path = os.path.join("digests", f"{run_date}.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
 def send_email(html_content: str):
     # EMAIL_RECEIVERS 是逗號分隔字串，拆成 list
     receivers = [r.strip() for r in EMAIL_RECEIVERS.split(",") if r.strip()]
@@ -617,6 +678,8 @@ def run():
             topic_signals[topic] = {"current": hit_count, "previous": previous, "trend": trend}
         logging.info(f"訊號追蹤完成：{topic_signals}")
 
+    path = save_digest_file(summaries, topic_signals, run_date)
+    print(f"📄 週報 Markdown 已存：{path}")
     html = build_email_html(summaries, topic_signals=topic_signals)
     send_email(html)
 

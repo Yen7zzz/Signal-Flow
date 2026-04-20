@@ -5,6 +5,9 @@ on:
     - cron: '0 22 * * 0'  # UTC 週日 22:00 = 台灣週一 06:00
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   digest:
     runs-on: ubuntu-latest
@@ -19,6 +22,8 @@ jobs:
     steps:
       - name: 拉取程式碼和資料庫
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 設定 Python 環境
         uses: actions/setup-python@v5
@@ -30,7 +35,16 @@ jobs:
         run: pip install feedparser anthropic scikit-learn sentence-transformers transformers torch trafilatura newspaper3k lxml requests
 
       - name: 建立必要資料夾
-        run: mkdir -p data logs
+        run: mkdir -p data logs digests
 
       - name: 生成並寄出週報
         run: python pipeline_b.py
+
+      - name: 儲存週報回 GitHub
+        run: |
+          git config user.name "SignalFlow Bot"
+          git config user.email "action@github.com"
+          git add -f data/news.db digests/
+          git diff --staged --quiet || git commit -m "📧 週報生成 $(date '+%Y-%m-%d')"
+          git pull --rebase
+          git push
