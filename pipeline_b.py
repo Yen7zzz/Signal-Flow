@@ -73,7 +73,10 @@ def get_ai_client(provider: str, model: str):
 
 def build_email_html(summaries_by_category: dict, topic_signals: dict | None = None) -> str:
     date_range     = datetime.now().strftime("%Y 年 %m 月 %d 日")
-    category_icons = {"Finance": "💰", "Technology": "🔬", "Politics": "🌏"}
+    category_icons = {
+        "Finance": "💰", "Technology": "🔬", "Politics": "🌏",
+        "財經": "💰", "科技": "🔬", "政治": "🌏",
+    }
     sections_html  = ""
 
     for category, result in summaries_by_category.items():
