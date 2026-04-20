@@ -2,11 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What This Is
+## Project Overview
 
-Signal-Flow is a Python automation system that:
-1. **Pipeline A** – Daily: Fetches RSS feeds, optionally filters with a Transformer classifier, deduplicates via MD5 hash, stores in SQLite
-2. **Pipeline B** – Weekly (Monday): Queries the last 7 days of articles, calls Groq/OpenAI to select top 5 per category and write summaries, sends an HTML digest email via Gmail SMTP
+SignalFlow is an automated RSS news aggregation and AI-powered weekly digest system. It collects news from 13+ RSS feeds daily (Finance, Technology, Politics categories), uses AI (Groq or OpenAI) to summarize top stories, and emails HTML digests every Monday.
 
 ## Setup
 
@@ -14,46 +12,64 @@ Signal-Flow is a Python automation system that:
 pip install -r requirements.txt
 ```
 
-All user configuration lives in `config.py` — API keys, email credentials, RSS feed lists, AI provider selection (Groq vs OpenAI), and `TOP_N` articles per category.
-
-For GitHub Actions deployment, `config.py` is generated dynamically from repository secrets (see `weekly_digest.yml`). Required secrets: `GROQ_API_KEY`, `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVERS`.
+Credentials are loaded from environment variables (configured in `config.py` via `os.environ`):
+- `GROQ_API_KEY` or `OPENAI_API_KEY` — AI provider
+- `EMAIL_SENDER`, `EMAIL_PASSWORD` (Gmail App Password), `EMAIL_RECEIVERS` (comma-separated)
 
 ## Running the Pipelines
 
 ```bash
-# Daily collection (basic)
-python pipeline_a.py
+# Daily: fetch RSS feeds and store articles
+python pipeline_a.py                # basic version
+python pipeline_a_transformer.py    # with semantic classification
 
-# Daily collection with semantic filtering (recommended)
-python pipeline_a_transformer.py
-
-# Weekly digest generation and email send
+# Weekly: generate AI summary and send HTML email
 python pipeline_b.py
 
-# Production scheduler (runs both on cron-like schedule)
+# Background scheduler (runs A daily at 08:00, B every Monday at 09:00)
 python scheduler.py
 
-# Calibrate the Transformer classification threshold
+# Threshold tuning utility
 python evaluate_threshold.py
 ```
 
 ## Architecture
 
-| File | Role |
-|------|------|
-| `config.py` | Single source of truth for all settings |
-| `database.py` | SQLite wrapper: init, dedup check, save, query |
-| `pipeline_a.py` | RSS fetch → clean HTML → deduplicate → store |
-| `pipeline_a_transformer.py` | Pipeline A + zero-shot semantic filtering via `classifier.py` |
-| `classifier.py` | Wraps `cross-encoder/nli-MiniLM2-L6-H768` for zero-shot category classification |
-| `evaluate_threshold.py` | Shows per-article scores and retention rates to tune `THRESHOLD` |
-| `pipeline_b.py` | Query DB → AI summarization per category → build HTML email → send via SMTP |
-| `scheduler.py` | Local production entry point using `schedule` library (daily 08:00 + Monday 09:00) |
+**Two-stage pipeline:**
 
-## Key Design Decisions
+- **Pipeline A** (daily ingestion): RSS feeds → feedparser → optional Transformer zero-shot classification → MD5 deduplication → SQLite
+- **Pipeline B** (weekly output): SQLite (last 7 days) → group by category → LLM API → HTML email via Gmail SMTP
 
-- **Database persistence in git**: `data/news.db` is committed so the SQLite DB survives between GitHub Actions runs (daily workflow commits it back after each collection).
-- **Pluggable AI backend**: `config.py` has `USE_GROQ = True/False` to switch between Groq (`llama-3.3-70b-versatile`) and OpenAI (`gpt-4o-mini`).
-- **Deduplication**: Articles are identified by MD5 hash of their URL — `database.article_exists()` prevents duplicates.
-- **Transformer filtering is optional**: `pipeline_a.py` skips it; `pipeline_a_transformer.py` adds a confidence-threshold gate before storing. Use `evaluate_threshold.py` to find the right threshold value.
-- **Email summaries are in Chinese**: The AI prompt in `pipeline_b.py` requests 2–3 sentence Chinese summaries. The HTML template uses category icons: 💰 Finance, 🔬 Technology, 🌏 Politics.
+**Key files:**
+- `config.py` — central config: AI provider, credentials, feed URLs, `DB_PATH`, `TOP_N`
+- `database.py` — SQLite abstraction; deduplication uses MD5 hash of URL stored in `hash` column
+- `classifier.py` — Hugging Face zero-shot classifier; uses English category labels for multilingual model compatibility
+- `pipeline_a_transformer.py` — extends `pipeline_a.py` with classifier filtering before DB insert
+- `pipeline_b.py` — calls LLM with structured prompt, parses JSON response, builds HTML, sends via SMTP
+
+**AI backend:** switchable via `config.AI_PROVIDER = "groq"` (default) or `"openai"`. Both SDKs share the same interface pattern in `get_ai_client()`.
+
+## CI/CD (GitHub Actions)
+
+- `.github/workflows/daily_collect.yml` — runs `pipeline_a_transformer.py` at UTC 22:00 daily, then auto-commits updated `data/news.db` to main
+- `.github/workflows/weekly_digest.yml` — runs `pipeline_b.py` every Sunday at UTC 22:00 (Monday 06:00 TST)
+
+Secrets required in GitHub repo: `GROQ_API_KEY`, `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVERS`.
+
+## Database Schema
+
+```sql
+CREATE TABLE articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash TEXT UNIQUE,       -- MD5(URL) for deduplication
+    category TEXT NOT NULL, -- Finance / Technology / Politics
+    title TEXT NOT NULL,
+    summary TEXT,
+    url TEXT NOT NULL,
+    source TEXT,
+    published TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+)
+```
+
+The database file `data/news.db` is committed to the repository and updated daily by GitHub Actions.

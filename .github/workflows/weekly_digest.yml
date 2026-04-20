@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
       EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
       EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
@@ -25,7 +27,7 @@ jobs:
           cache: 'pip'
 
       - name: 安裝套件
-        run: pip install groq openai
+        run: pip install feedparser anthropic scikit-learn sentence-transformers transformers torch trafilatura newspaper3k lxml requests
 
       - name: 建立必要資料夾
         run: mkdir -p data logs
