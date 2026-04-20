@@ -88,18 +88,20 @@ CREATE TABLE articles (
 )
 
 CREATE TABLE weekly_digests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_start TEXT NOT NULL,
-    category TEXT NOT NULL,
-    digest_json TEXT,       -- Stage 2 Sonnet output (ranked summaries + trends)
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date   TEXT NOT NULL,
+    category   TEXT NOT NULL,
+    trend      TEXT,
+    articles   TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 )
 
 CREATE TABLE topic_signals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_start TEXT NOT NULL,
-    category TEXT NOT NULL,
-    signal_json TEXT,       -- topic trend signals extracted by Stage 2
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date   TEXT NOT NULL,
+    topic      TEXT NOT NULL,
+    hit_count  INTEGER DEFAULT 0,
+    hit_urls   TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 )
 ```
