@@ -2,7 +2,7 @@ name: 📧 每週新聞週報
 
 on:
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0 22 * * 0'  # UTC 週日 22:00 = 台灣週一 06:00
   workflow_dispatch:
 
 jobs:
