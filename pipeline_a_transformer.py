@@ -145,6 +145,12 @@ def run():
     print(f"   過濾掉：{total_fetched - total_saved} 篇雜訊")
     logging.info(f"Pipeline A 完成，抓 {total_fetched} 篇，存 {total_saved} 篇")
 
+    try:
+        from signal_flash import run_signal_flash
+        run_signal_flash(newly_saved_urls=newly_saved_urls)
+    except Exception as e:
+        logging.warning(f"Signal Flash 執行失敗（不影響 Pipeline A）：{e}")
+
 
 if __name__ == "__main__":
     run()

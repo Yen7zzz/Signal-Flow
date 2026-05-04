@@ -17,6 +17,8 @@ jobs:
       EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
       EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
       EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
     steps:
       - name: 拉取程式碼和資料庫
         uses: actions/checkout@v4
@@ -30,7 +32,7 @@ jobs:
           cache: 'pip'
 
       - name: 安裝套件
-        run: pip install feedparser transformers torch sentence-transformers trafilatura newspaper3k lxml requests
+        run: pip install feedparser transformers torch sentence-transformers trafilatura newspaper3k lxml requests anthropic
 
       - name: 建立必要資料夾
         run: mkdir -p data logs
