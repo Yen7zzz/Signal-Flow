@@ -13,7 +13,6 @@ import requests
 
 from config import ANTHROPIC_API_KEY, DB_PATH
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 CATEGORY_MAP = {
@@ -127,9 +126,11 @@ def _call_haiku(prompt: str) -> dict | None:
         return json.loads(raw)
     except anthropic.APIError as e:
         logger.warning("Haiku API 失敗：%s", e)
+        print(f"[WARNING] Haiku API 失敗：{e}")
         return None
     except json.JSONDecodeError as e:
         logger.warning("JSON 解析失敗：%s", e)
+        print(f"[WARNING] JSON 解析失敗：{e}")
         return None
 
 
@@ -161,6 +162,7 @@ def _push_line(message: str) -> None:
     user_id = os.environ.get("LINE_USER_ID", "")
     if not token or not user_id:
         logger.warning("LINE 環境變數未設定（LINE_CHANNEL_ACCESS_TOKEN / LINE_USER_ID），跳過推播。")
+        print("[WARNING] LINE 環境變數未設定（LINE_CHANNEL_ACCESS_TOKEN / LINE_USER_ID），跳過推播。")
         return
     payload = {
         "to": user_id,
@@ -177,11 +179,13 @@ def _push_line(message: str) -> None:
             timeout=10,
         )
         if resp.status_code == 200:
-            logger.info("LINE 推播成功。")
+            print("LINE 推播成功。")
         else:
             logger.warning("LINE 推播失敗：%s %s", resp.status_code, resp.text)
+            print(f"[WARNING] LINE 推播失敗：{resp.status_code} {resp.text}")
     except requests.RequestException as e:
         logger.warning("LINE 推播例外：%s", e)
+        print(f"[WARNING] LINE 推播例外：{e}")
 
 
 def run_signal_flash(newly_saved_urls: list[str] | None = None) -> None:
@@ -190,21 +194,21 @@ def run_signal_flash(newly_saved_urls: list[str] | None = None) -> None:
     - newly_saved_urls 傳入時，精確比對這批剛存入的文章。
     - 不傳入時，fallback 撈最近 24 小時文章。
     """
-    logger.info("=== signal_flash 開始 ===")
+    print("=== signal_flash 開始 ===")
 
     today_articles = _get_articles(newly_saved_urls)
     if len(today_articles) < 5:
-        logger.info("今日新文章 %d 篇，樣本過少，靜默退出。", len(today_articles))
+        print(f"今日新文章 {len(today_articles)} 篇，樣本過少，靜默退出。")
         return
 
-    logger.info("今日新文章：%d 篇", len(today_articles))
+    print(f"今日新文章：{len(today_articles)} 篇")
 
     last_trends = _get_last_trends()
     if not last_trends:
-        logger.info("無任何分類的歷史趨勢資料，靜默退出。")
+        print("無任何分類的歷史趨勢資料，靜默退出。")
         return
 
-    logger.info("取得歷史趨勢分類：%s", list(last_trends.keys()))
+    print(f"取得歷史趨勢分類：{list(last_trends.keys())}")
 
     prompt = _build_prompt(today_articles, last_trends)
     result = _call_haiku(prompt)
@@ -212,18 +216,18 @@ def run_signal_flash(newly_saved_urls: list[str] | None = None) -> None:
         return
 
     if not result.get("has_signal"):
-        logger.info("今日無方向性訊號，靜默退出。")
+        print("今日無方向性訊號，靜默退出。")
         return
 
     signals = result.get("signals", [])
     if not signals:
-        logger.info("has_signal=true 但 signals 為空，靜默退出。")
+        print("has_signal=true 但 signals 為空，靜默退出。")
         return
 
-    logger.info("偵測到 %d 個訊號，準備推播 LINE。", len(signals))
+    print(f"偵測到 {len(signals)} 個訊號，準備推播 LINE。")
     message = _build_line_message(signals, last_trends)
     _push_line(message)
-    logger.info("=== signal_flash 完成 ===")
+    print("=== signal_flash 完成 ===")
 
 
 if __name__ == "__main__":

@@ -149,7 +149,7 @@ def run():
         from signal_flash import run_signal_flash
         run_signal_flash(newly_saved_urls=newly_saved_urls)
     except Exception as e:
-        logging.warning(f"Signal Flash 執行失敗（不影響 Pipeline A）：{e}")
+        print(f"[WARNING] Signal Flash 執行失敗（不影響 Pipeline A）：{e}")
 
 
 if __name__ == "__main__":
