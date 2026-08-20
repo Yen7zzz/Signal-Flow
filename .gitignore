@@ -213,3 +213,6 @@ data/*
 
 # logs 全部不追蹤（保護隱私）
 logs/
+
+# IDE 專案設定檔（__pycache__/ 與 *.pyc 已被上方的 *.py[codz] 規則涵蓋）
+.idea/
