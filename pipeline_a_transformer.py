@@ -14,7 +14,7 @@ from datetime import datetime
 from database import init_db, save_article, article_exists, update_full_text
 from classifier import NewsClassifier
 from scraper import fetch_full_text
-from config import RSS_FEEDS
+from config import RSS_FEEDS, TITLE_BLOCKLIST, TITLE_BLOCKLIST_PATTERNS
 import os
 
 os.makedirs("logs", exist_ok=True)  # 加這行
@@ -35,11 +35,22 @@ logging.basicConfig(
 THRESHOLD = 0.4
 
 
+def is_blocklisted_title(title: str) -> bool:
+    """標題是否命中黑名單（純字串或 regex），命中視為內容農場/導購頁面"""
+    title_lower = title.lower()
+    if any(keyword in title_lower for keyword in TITLE_BLOCKLIST):
+        return True
+    if any(re.search(pattern, title_lower) for pattern in TITLE_BLOCKLIST_PATTERNS):
+        return True
+    return False
+
+
 def parse_feed(category: str, feed_url: str) -> list[dict]:
     """解析單一 RSS feed，回傳文章清單"""
     try:
         feed = feedparser.parse(feed_url)
         articles = []
+        blocked_count = 0
         for entry in feed.entries:
             title     = entry.get("title", "").strip()
             url       = entry.get("link", "").strip()
@@ -47,6 +58,10 @@ def parse_feed(category: str, feed_url: str) -> list[dict]:
             published = entry.get("published", "")
 
             if title and url:
+                if is_blocklisted_title(title):
+                    blocked_count += 1
+                    print(f"      🚫 黑名單擋掉：{title[:60]}")
+                    continue
                 articles.append({
                     "category":  category,   # RSS 設定的分類（後面會被 Transformer 覆蓋）
                     "title":     title,
@@ -55,6 +70,8 @@ def parse_feed(category: str, feed_url: str) -> list[dict]:
                     "source":    feed.feed.get("title", feed_url),
                     "published": published,
                 })
+        if blocked_count:
+            print(f"      🚫 {feed_url[:50]}... 共擋掉 {blocked_count} 篇黑名單標題")
         return articles
     except Exception as e:
         logging.error(f"❌ 解析失敗 {feed_url}: {e}")

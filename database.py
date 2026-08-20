@@ -100,7 +100,7 @@ def get_recent_articles(days: int = 7) -> list[dict]:
     """撈最近 N 天的所有文章"""
     with get_connection() as conn:
         rows = conn.execute("""
-            SELECT category, title, summary, url, source, published, full_text
+            SELECT category, title, summary, url, source, published, full_text, created_at
             FROM articles
             WHERE created_at >= datetime('now', ?)
             ORDER BY category, created_at DESC
@@ -111,6 +111,7 @@ def get_recent_articles(days: int = 7) -> list[dict]:
             "category": r[0], "title": r[1], "summary": r[2],
             "url": r[3], "source": r[4], "published": r[5],
             "full_text": r[6],   # nullable，舊資料為 None
+            "created_at": r[7],
         }
         for r in rows
     ]
@@ -176,6 +177,37 @@ def get_last_topic_signal(topic: str) -> dict | None:
     if row is None:
         return None
     return {"run_date": row[0], "hit_count": row[1]}
+
+
+def get_last_digest_titles(category: str) -> list[str]:
+    """撈上一次 weekly_digest 該分類記錄的所有事件標題，供新舊事件比對。"""
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT articles
+            FROM weekly_digests
+            WHERE category = ?
+            ORDER BY run_date DESC
+            LIMIT 1
+        """, (category,)).fetchone()
+
+    if row is None or not row[0]:
+        return []
+
+    try:
+        articles = json.loads(row[0])
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    if not isinstance(articles, list):
+        return []
+
+    titles = []
+    for item in articles:
+        if isinstance(item, dict) and item.get("title"):
+            titles.append(item["title"])
+        elif isinstance(item, str):
+            titles.append(item)
+    return titles
 
 
 if __name__ == "__main__":
