@@ -22,14 +22,10 @@ Credentials are loaded from environment variables (configured in `config.py` via
 
 ```bash
 # Daily: fetch RSS feeds and store articles
-python pipeline_a.py                # basic version
-python pipeline_a_transformer.py    # with semantic classification (recommended)
+python pipeline_a_transformer.py
 
 # Weekly: generate evidence pack Markdown and email as attachment
 python pipeline_b.py
-
-# Background scheduler (runs A daily at 08:00, B every Monday at 09:00)
-python scheduler.py
 
 # Utilities
 python evaluate_threshold.py        # tune Transformer classification threshold
@@ -42,7 +38,7 @@ python test_track_topics.py         # test topic signal tracking
 
 **Two-stage pipeline:**
 
-**Pipeline A** (daily ingestion):
+**Pipeline A** (daily ingestion, `pipeline_a_transformer.py`):
 RSS feeds → feedparser → Transformer zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`) → MD5 deduplication → SQLite → full-text scraping (trafilatura / newspaper3k fallback)
 
 **Pipeline B** (weekly output):
@@ -54,10 +50,8 @@ SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, `distance_
 - `classifier.py` — Hugging Face zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`); uses English category labels for multilingual model compatibility
 - `clusterer.py` — AgglomerativeClustering on sentence embeddings (`all-MiniLM-L6-v2`) to group related articles
 - `scraper.py` — full-text extraction via trafilatura with newspaper3k fallback
-- `pipeline_a.py` — basic RSS fetch → clean HTML → deduplicate → store
-- `pipeline_a_transformer.py` — extends `pipeline_a.py` with classifier filtering and full-text scraping before DB insert
+- `pipeline_a_transformer.py` — daily RSS fetch → classifier filtering → full-text scraping before DB insert
 - `pipeline_b.py` — cluster → build Markdown evidence pack → save to `digests/` → email as attachment via SMTP
-- `scheduler.py` — local production entry point using `schedule` library
 - `diagnose_fulltext.py` — diagnostic tool for full-text scraping coverage
 - `test_scraper.py` — scraper unit tests
 - `test_track_topics.py` — topic signal tracking tests

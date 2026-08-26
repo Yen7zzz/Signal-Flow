@@ -13,10 +13,8 @@ SignalFlow/
 ├── classifier.py                ← Transformer zero-shot 分類器
 ├── clusterer.py                 ← AgglomerativeClustering 文章分群
 ├── scraper.py                   ← 全文抓取（trafilatura + newspaper3k fallback）
-├── pipeline_a.py                ← 每日：RSS 抓取 → 去重 → 存 DB（基本版）
-├── pipeline_a_transformer.py    ← 每日：加入語意篩選 + 全文抓取（推薦）
+├── pipeline_a_transformer.py    ← 每日：RSS 抓取 → 語意篩選 + 全文抓取 → 存 DB
 ├── pipeline_b.py                ← 每週：分群 → 產出 Evidence Pack → 寄信
-├── scheduler.py                 ← 本機自動排程主程式
 ├── evaluate_threshold.py        ← 調整分類器門檻工具
 ├── diagnose_fulltext.py         ← 全文抓取診斷工具
 ├── test_scraper.py              ← scraper 測試
@@ -41,10 +39,9 @@ pip install -r requirements.txt
 export EMAIL_SENDER=your_gmail@gmail.com
 export EMAIL_PASSWORD=your_app_password   # 見下方說明
 export EMAIL_RECEIVERS=a@example.com,b@example.com
-
-# 3. 啟動排程
-python scheduler.py
 ```
+
+排程由 GitHub Actions 執行（見下方 `.github/workflows/`），無需在本機啟動排程。
 
 ---
 
@@ -62,7 +59,7 @@ python scheduler.py
 ## 手動執行
 
 ```bash
-# Pipeline A：抓新聞（含語意篩選，推薦）
+# Pipeline A：抓新聞（含語意篩選）
 python pipeline_a_transformer.py
 
 # Pipeline B：生成週報並寄信

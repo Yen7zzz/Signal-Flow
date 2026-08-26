@@ -73,8 +73,6 @@ SOURCE_TIERS = {
 }
 SOURCE_TIER_DEFAULT = 3   # 未列出的來源預設值
 
-NOVELTY_THRESHOLD = 0.55   # cosine 相似度，超過視為「上週延續事件」
-
 CLUSTER_DISTANCE_THRESHOLD = 0.40   # 校準結果，對應 cosine similarity 0.60
 GITHUB_DIGEST_BASE_URL = "https://github.com/Yen7zzz/Signal-Flow/blob/main/digests/"
 
