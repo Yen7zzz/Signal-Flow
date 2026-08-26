@@ -38,7 +38,6 @@ SignalFlow/
 pip install -r requirements.txt
 
 # 2. 設定環境變數
-export ANTHROPIC_API_KEY=your_key
 export EMAIL_SENDER=your_gmail@gmail.com
 export EMAIL_PASSWORD=your_app_password   # 見下方說明
 export EMAIL_RECEIVERS=a@example.com,b@example.com
@@ -102,7 +101,6 @@ Pipeline B（每週日 UTC 22:00 = 台灣週一 06:00）
 
 | Secret | 用途 |
 |--------|------|
-| `ANTHROPIC_API_KEY` | Stage 1 (Haiku) + Stage 2 (Sonnet) |
 | `EMAIL_SENDER` | Gmail 寄件帳號 |
 | `EMAIL_PASSWORD` | Gmail App Password |
 | `EMAIL_RECEIVERS` | 收件人（逗號分隔） |

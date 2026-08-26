@@ -15,7 +15,6 @@ pip install -r requirements.txt
 ```
 
 Credentials are loaded from environment variables (configured in `config.py` via `os.environ`):
-- `ANTHROPIC_API_KEY` — required; drives both Stage 1 and Stage 2
 - `EMAIL_SENDER`, `EMAIL_PASSWORD` (Gmail App Password), `EMAIL_RECEIVERS` (comma-separated) — required
 - `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY` — retained in config.py but not required by current pipelines
 
@@ -69,7 +68,7 @@ SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, distance_t
 - `.github/workflows/daily_collect.yml` — runs `pipeline_a_transformer.py` at UTC 22:00 daily, then auto-commits updated `data/news.db` to main
 - `.github/workflows/weekly_digest.yml` — runs `pipeline_b.py` every Sunday at UTC 22:00 (= Taiwan Monday 06:00)
 
-Secrets required in GitHub repo: `ANTHROPIC_API_KEY`, `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVERS`, `GEMINI_API_KEY` (in workflow env; not currently required by pipelines).
+Secrets required in GitHub repo: `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVERS`, `GEMINI_API_KEY` (in workflow env; not currently required by pipelines).
 
 ## Database Schema
 
