@@ -1,6 +1,6 @@
 # 📰 SignalFlow — AI 驅動的新聞週報系統
 
-每天自動抓新聞、語意分群，每週一早上寄出 Anthropic AI 整理的深度摘要 Email。
+每天自動抓新聞、語意分群，每週一早上寄出結構化 Evidence Pack Markdown Email（零 LLM，供下游 Claude 對話交叉驗證）。
 
 ---
 
@@ -15,7 +15,7 @@ SignalFlow/
 ├── scraper.py                   ← 全文抓取（trafilatura + newspaper3k fallback）
 ├── pipeline_a.py                ← 每日：RSS 抓取 → 去重 → 存 DB（基本版）
 ├── pipeline_a_transformer.py    ← 每日：加入語意篩選 + 全文抓取（推薦）
-├── pipeline_b.py                ← 每週：分群 → AI 摘要 → 寄信
+├── pipeline_b.py                ← 每週：分群 → 產出 Evidence Pack → 寄信
 ├── scheduler.py                 ← 本機自動排程主程式
 ├── evaluate_threshold.py        ← 調整分類器門檻工具
 ├── diagnose_fulltext.py         ← 全文抓取診斷工具
@@ -88,11 +88,11 @@ Pipeline A（每日 UTC 22:00）
 
 Pipeline B（每週日 UTC 22:00 = 台灣週一 06:00）
   SQLite 撈最近 7 天文章
-    → AgglomerativeClustering 語意分群（all-MiniLM-L6-v2）
-    → Stage 1：Haiku 批次摘要（成本效率優先）
-    → Stage 2：Sonnet 排名 + 趨勢分析（品質優先）
-    → 組成 HTML Email
-    → Gmail SMTP 寄出
+    → AgglomerativeClustering 語意分群（all-MiniLM-L6-v2，distance_threshold=0.40, metric=cosine, linkage=average）
+    → 訊號追蹤（本機關鍵字/語意比對）
+    → 產出結構化 Markdown Evidence Pack（digests/YYYY-MM-DD.md）
+    → 以附件寄出（Gmail SMTP）
+  零 LLM，不做摘要、排名或判斷
 ```
 
 ---

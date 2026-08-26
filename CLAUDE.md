@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SignalFlow is an automated RSS news aggregation and AI-powered weekly digest system. It collects news from 13+ RSS feeds daily (Finance, Technology, Politics categories), clusters similar articles, uses a dual-model Anthropic setup to summarize and rank stories, and emails HTML digests every Monday morning (TST).
+SignalFlow is an automated RSS news aggregation system. It collects news from 13+ RSS feeds daily (Finance, Technology, Politics categories), clusters similar articles locally, and emails a structured Markdown "evidence pack" every Monday morning (TST).
 
-**AI backend:** Anthropic dual-model pipeline — Stage 1 uses `claude-haiku-4-5-20251001` (cost-efficient batch summarization), Stage 2 uses `claude-sonnet-4-6` (quality ranking and trend analysis).
+**AI backend:** none. The pipeline calls zero LLM APIs — classification uses a local Hugging Face zero-shot classifier, clustering uses local sentence-transformer embeddings, and topic tracking is local keyword/semantic matching. The evidence pack is meant to be fed into a downstream Claude conversation for cross-checking, not to be a pre-written human-readable summary.
 
 ## Setup
 
@@ -25,7 +25,7 @@ Credentials are loaded from environment variables (configured in `config.py` via
 python pipeline_a.py                # basic version
 python pipeline_a_transformer.py    # with semantic classification (recommended)
 
-# Weekly: generate AI summary and send HTML email
+# Weekly: generate evidence pack Markdown and email as attachment
 python pipeline_b.py
 
 # Background scheduler (runs A daily at 08:00, B every Monday at 09:00)
@@ -46,17 +46,17 @@ python test_track_topics.py         # test topic signal tracking
 RSS feeds → feedparser → Transformer zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`) → MD5 deduplication → SQLite → full-text scraping (trafilatura / newspaper3k fallback)
 
 **Pipeline B** (weekly output):
-SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, distance_threshold=0.55) → Stage 1: batch article summarization (Haiku) → Stage 2: ranking + trend analysis (Sonnet) → HTML email via Gmail SMTP
+SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, `distance_threshold=0.40`, `metric="cosine"`, `linkage="average"`) → topic signal tracking (local keyword/semantic matching, `TOPIC_SIMILARITY_THRESHOLD=0.4`) → structured Markdown evidence pack (`digests/YYYY-MM-DD.md`) → emailed as attachment via Gmail SMTP. No LLM calls, no summarization, ranking, or judgment — raw data only, for downstream Claude cross-validation.
 
 **Key files:**
-- `config.py` — central config: AI provider, credentials, feed URLs, `DB_PATH`, `TOP_N`
+- `config.py` — central config: credentials, feed URLs, `DB_PATH`, `TOP_N`
 - `database.py` — SQLite abstraction; deduplication uses MD5 hash of URL stored in `hash` column
 - `classifier.py` — Hugging Face zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`); uses English category labels for multilingual model compatibility
 - `clusterer.py` — AgglomerativeClustering on sentence embeddings (`all-MiniLM-L6-v2`) to group related articles
 - `scraper.py` — full-text extraction via trafilatura with newspaper3k fallback
 - `pipeline_a.py` — basic RSS fetch → clean HTML → deduplicate → store
 - `pipeline_a_transformer.py` — extends `pipeline_a.py` with classifier filtering and full-text scraping before DB insert
-- `pipeline_b.py` — cluster → Stage 1 Haiku summarization → Stage 2 Sonnet ranking/trends → build HTML → send via SMTP
+- `pipeline_b.py` — cluster → build Markdown evidence pack → save to `digests/` → email as attachment via SMTP
 - `scheduler.py` — local production entry point using `schedule` library
 - `diagnose_fulltext.py` — diagnostic tool for full-text scraping coverage
 - `test_scraper.py` — scraper unit tests
