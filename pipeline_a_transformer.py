@@ -14,7 +14,8 @@ from datetime import datetime
 from database import init_db, save_article, article_exists, update_full_text
 from classifier import NewsClassifier
 from scraper import fetch_full_text
-from config import RSS_FEEDS, TITLE_BLOCKLIST, TITLE_BLOCKLIST_PATTERNS
+from cleanup_fulltext import clear_old_fulltext
+from config import RSS_FEEDS, TITLE_BLOCKLIST, TITLE_BLOCKLIST_PATTERNS, FULLTEXT_RETENTION_DAYS
 import os
 
 os.makedirs("logs", exist_ok=True)  # 加這行
@@ -154,6 +155,17 @@ def run():
 
         print(f"\n   全文抓取完成：成功 {ft_success} 篇，失敗 {ft_failure} 篇")
         logging.info(f"全文抓取：成功 {ft_success}，失敗 {ft_failure}")
+
+    # ── Step 5：清空超過 N 天前的 full_text（只 UPDATE，不 VACUUM）──
+    # VACUUM 會重寫整個檔案，導致每天的 git blob 無法 delta 壓縮，
+    # 因此只在每日 pipeline 做欄位清空，VACUUM 留給 cleanup_fulltext.py 手動執行
+    try:
+        cleared = clear_old_fulltext(FULLTEXT_RETENTION_DAYS)
+        print(f"\n🧹 已清空 {cleared} 筆超過 {FULLTEXT_RETENTION_DAYS} 天的 full_text")
+        logging.info(f"full_text 清理：清空 {cleared} 筆（保留窗口 {FULLTEXT_RETENTION_DAYS} 天）")
+    except Exception as e:
+        print(f"⚠️  full_text 清理失敗，略過：{e}")
+        logging.warning(f"full_text 清理失敗：{e}")
 
     print(f"\n{'='*50}")
     print(f"🎉 完成！")

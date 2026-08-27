@@ -15,7 +15,7 @@ import os
 import sqlite3
 import sys
 
-from config import DB_PATH
+from config import DB_PATH, FULLTEXT_RETENTION_DAYS
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -23,6 +23,30 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 def get_file_size(path: str) -> int:
     return os.path.getsize(path)
+
+
+def clear_old_fulltext(days: int, db_path: str = DB_PATH) -> int:
+    """
+    清空超過 N 天前的 full_text（只做 UPDATE，不含 VACUUM）。
+    供每日 pipeline 與本檔案的 CLI 共用，回傳被清空的筆數。
+    """
+    con = sqlite3.connect(db_path)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            """
+            UPDATE articles
+            SET full_text = NULL
+            WHERE created_at < datetime('now', ?)
+              AND full_text IS NOT NULL
+            """,
+            (f"-{days} days",),
+        )
+        affected = cur.rowcount
+        con.commit()
+        return affected
+    finally:
+        con.close()
 
 
 def dry_run_stats(days: int) -> None:
@@ -83,20 +107,10 @@ def do_cleanup(days: int) -> None:
     size_before = get_file_size(DB_PATH)
     print(f"執行前檔案大小：{size_before:,} bytes（{size_before/1024/1024:.2f} MB）")
 
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute(
-        """
-        UPDATE articles
-        SET full_text = NULL
-        WHERE created_at < datetime('now', ?)
-          AND full_text IS NOT NULL
-        """,
-        (f"-{days} days",),
-    )
-    affected = cur.rowcount
-    con.commit()
+    affected = clear_old_fulltext(days)
     print(f"已清除 {affected:,} 筆 full_text，執行 VACUUM 中...")
+
+    con = sqlite3.connect(DB_PATH)
     con.execute("VACUUM")
     con.close()
 
@@ -107,7 +121,10 @@ def do_cleanup(days: int) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="清除歷史 full_text 以控制 news.db 體積")
-    parser.add_argument("--days", type=int, default=30, help="清除幾天前的 full_text（預設 30）")
+    parser.add_argument(
+        "--days", type=int, default=FULLTEXT_RETENTION_DAYS,
+        help=f"清除幾天前的 full_text（預設 {FULLTEXT_RETENTION_DAYS}）",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只統計，不修改任何資料")
     args = parser.parse_args()
 

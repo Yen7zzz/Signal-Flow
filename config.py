@@ -13,6 +13,10 @@ SMTP_PORT = 587
 DB_PATH   = "data/news.db"
 TOP_N     = 5
 
+# full_text 只用於 pipeline_b 的 len() 判斷（✅/⚠️ 標記），聚類與 digest 內容皆不依賴其文字，
+# 超過此天數的 full_text 由每日 pipeline 自動清空以控制 news.db 體積
+FULLTEXT_RETENTION_DAYS = 30
+
 RSS_FEEDS = {
     "Finance": [
         "https://feeds.bloomberg.com/markets/news.rss",
