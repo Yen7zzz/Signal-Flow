@@ -78,15 +78,19 @@ def dedup_sources(articles: list[dict]) -> str:
 
 
 def render_markdown(clustered_by_category: dict, stats: dict, topic_signals: dict | None = None,
-                    warnings: list[str] | None = None) -> str:
+                    warnings: list[str] | None = None,
+                    unclassified_events: list[dict] | None = None) -> str:
     """
     產出 Evidence Pack Markdown。
-    clustered_by_category: {category: events}，events 是 clusterer.cluster_articles() 的輸出
-    stats: {run_date, start_date, end_date, total_articles, total_events, fulltext_coverage}
+    clustered_by_category: {category: events}，events 是 clusterer.cluster_articles() 的輸出（不含未分類）
+    stats: {run_date, start_date, end_date, total_articles, total_events, fulltext_coverage,
+            total_unclassified, unclassified_events}
     topic_signals: {topic: {"current": int, "previous": int|None, "trend": str}}
     warnings: 本週資料警告（聚類失敗、文章數過少等），有才輸出警告區塊
+    unclassified_events: 未分類文章的聚類結果，以精簡格式放在報告最後
     只搬運與標註，不改寫、不排名、不下判斷、不壓縮。
     """
+    uncl = config.UNCLASSIFIED_CATEGORY
     lines = []
     lines.append(f"# SignalFlow Evidence Pack — {stats['run_date']}")
     lines.append("")
@@ -96,15 +100,22 @@ def render_markdown(clustered_by_category: dict, stats: dict, topic_signals: dic
         lines.append("")
     lines.append("> **資料性質**：未經 LLM 處理的原始新聞聚合。所有標題與摘要皆為媒體原文，未經改寫。")
     lines.append(f"> **收錄期間**：{stats['start_date']} ~ {stats['end_date']}")
-    lines.append(f"> **原始文章數**：{stats['total_articles']}｜聚類後事件數：{stats['total_events']}")
+    n_uncl = stats.get("total_unclassified", 0)
+    uncl_note = (
+        f"（另有{uncl} {n_uncl} 篇 → {stats.get('unclassified_events', 0)} 群，列於報告最後）" if n_uncl else ""
+    )
+    lines.append(f"> **原始文章數**：{stats['total_articles']}｜聚類後事件數：{stats['total_events']}{uncl_note}")
     lines.append(
         f"> **全文抓取覆蓋率**：{stats['fulltext_coverage']:.0%}"
         f"（標記 ⚠️ 者僅有 RSS 摘要，內容可能不完整，建議搜尋原文）"
     )
     lines.append("> **來源分級**：T1=通訊社/即時財經（一手）　T2=主流報紙/廣電（採訪為主）　T3=專業媒體/評論/聚合（多為二手或分析）。此為報導性質分類，非品質評分。")
     lines.append("> **排序依據**：報導數（cluster_size）由多到少，**非重要性判斷**")
-    lines.append("> **分類說明**：由本機 zero-shot 分類器判定，低信心時會歸入最大分類，")
-    lines.append("> 因此各分類內可能混入不相關主題，請自行判讀")
+    lines.append(
+        f"> **分類說明**：由本機 zero-shot 分類器判定；最高分低於 {config.CLASSIFIER_THRESHOLD} 的文章歸入「{uncl}」，"
+        f"列於報告最後（精簡格式、未抓全文、不計入訊號追蹤與上方文章數）。"
+    )
+    lines.append("> 各分類內仍可能混入不相關主題，請自行判讀")
     lines.append("")
 
     for category, events in clustered_by_category.items():
@@ -144,6 +155,23 @@ def render_markdown(clustered_by_category: dict, stats: dict, topic_signals: dic
             lines.append(f"| {topic} | {sig['current']} | {prev} | {sig['trend']} |")
         lines.append("")
 
+    if unclassified_events:
+        lines.append(f"## {uncl}（{n_uncl} 篇 → {len(unclassified_events)} 群，精簡格式）")
+        lines.append("")
+        lines.append(f"> 分類器最高分低於 {config.CLASSIFIER_THRESHOLD}，可能是雜訊，也可能是跨領域新聞；未抓全文，不列摘要")
+        lines.append("")
+        for i, event in enumerate(unclassified_events, 1):
+            rep = event["representative"]
+            related = event["related"]
+            lines.append(f"### {i}. {rep.get('title', '(無標題)')}")
+            lines.append(f"- **來源**：{dedup_sources([rep] + related)}")
+            lines.append(f"- **連結**：{rep.get('url', '')}")
+            if related:
+                lines.append("- **同群報導**：")
+                for r in related:
+                    lines.append(f"  - {r.get('title', '')}")
+            lines.append("")
+
     return "\n".join(lines)
 
 
@@ -155,7 +183,8 @@ def save_digest_file(markdown: str, run_date: str) -> str:
     return path
 
 
-def send_email(run_date: str, total_articles: int, total_events: int, attachment_path: str):
+def send_email(run_date: str, total_articles: int, total_events: int, attachment_path: str,
+               total_unclassified: int = 0, unclassified_events: int = 0):
     receivers = [r.strip() for r in config.EMAIL_RECEIVERS.split(",") if r.strip()]
 
     msg = MIMEMultipart()
@@ -163,8 +192,13 @@ def send_email(run_date: str, total_articles: int, total_events: int, attachment
     msg["From"] = config.EMAIL_SENDER
     msg["To"] = ", ".join(receivers)
 
+    unclassified_note = (
+        f"另有{config.UNCLASSIFIED_CATEGORY} {total_unclassified} 篇 → {unclassified_events} 群（列於附件最後）。\n"
+        if total_unclassified else ""
+    )
     body = (
         f"本週收錄 {total_articles} 篇文章，聚類為 {total_events} 個事件。\n"
+        f"{unclassified_note}"
         f"完整內容見附件。\n"
         f"GitHub: {config.GITHUB_DIGEST_BASE_URL}{run_date}.md"
     )
@@ -233,8 +267,11 @@ def run(dry_run: bool = False):
 
     init_db()
     all_articles = get_recent_articles(days=7)
-    total = len(all_articles)
-    print(f"\n📦 共撈到 {total} 篇文章")
+    uncl = config.UNCLASSIFIED_CATEGORY
+    classified_articles = [a for a in all_articles if a["category"] != uncl]
+    total = len(classified_articles)             # 正常分類文章數（不含未分類）
+    total_unclassified = len(all_articles) - total
+    print(f"\n📦 共撈到 {len(all_articles)} 篇文章（正常分類 {total} 篇，{uncl} {total_unclassified} 篇）")
 
     if not all_articles:
         print("❌ 無文章，Pipeline B 失敗結束")
@@ -276,14 +313,19 @@ def run(dry_run: bool = False):
         f"{cat} {len(evts)} 個事件" for cat, evts in clustered_by_category.items()
     ))
 
+    # 未分類獨立出來：不計入事件數、全文覆蓋率、訊號追蹤，報告中放在最後
+    unclassified_events = clustered_by_category.pop(uncl, [])
+
     total_events = sum(len(evts) for evts in clustered_by_category.values())
-    n_fulltext = sum(1 for a in all_articles if len(a.get("full_text") or "") > FULLTEXT_MIN_LEN)
+    n_fulltext = sum(1 for a in classified_articles if len(a.get("full_text") or "") > FULLTEXT_MIN_LEN)
     fulltext_coverage = n_fulltext / total if total else 0.0
 
-    print(f"\n📊 漏斗：{total} 篇 → {total_events} 個事件（全文覆蓋率 {fulltext_coverage:.0%}）")
-    logging.info(f"漏斗：{total} 篇 → {total_events} 個事件，全文覆蓋率 {fulltext_coverage:.0%}")
+    print(f"\n📊 漏斗：{total} 篇 → {total_events} 個事件（全文覆蓋率 {fulltext_coverage:.0%}）"
+          f"；{uncl} {total_unclassified} 篇 → {len(unclassified_events)} 群")
+    logging.info(f"漏斗：{total} 篇 → {total_events} 個事件，全文覆蓋率 {fulltext_coverage:.0%}；"
+                 f"{uncl} {total_unclassified} 篇 → {len(unclassified_events)} 群")
 
-    # 訊號追蹤：用每個事件的 representative
+    # 訊號追蹤：用每個事件的 representative（不含未分類）
     representatives = [
         event["representative"]
         for events in clustered_by_category.values()
@@ -298,9 +340,12 @@ def run(dry_run: bool = False):
         "total_articles": total,
         "total_events": total_events,
         "fulltext_coverage": fulltext_coverage,
+        "total_unclassified": total_unclassified,
+        "unclassified_events": len(unclassified_events),
     }
 
-    markdown = render_markdown(clustered_by_category, stats, topic_signals=topic_signals, warnings=warnings)
+    markdown = render_markdown(clustered_by_category, stats, topic_signals=topic_signals, warnings=warnings,
+                               unclassified_events=unclassified_events)
     path = save_digest_file(markdown, run_date)
     print(f"📄 Evidence Pack 已存：{path}")
 
@@ -323,8 +368,11 @@ def run(dry_run: bool = False):
         logging.info(f"Pipeline B --dry-run 完成，{total} 篇 → {total_events} 個事件")
         return
 
-    # 存入本週週報（供下週跨週比較使用，全量保留，不只前幾名）
-    for category, events in clustered_by_category.items():
+    # 存入本週週報（供下週跨週比較使用，全量保留，不只前幾名）；未分類另存一列，category 不會混用
+    snapshot_items = list(clustered_by_category.items())
+    if unclassified_events:
+        snapshot_items.append((uncl, unclassified_events))
+    for category, events in snapshot_items:
         articles_snapshot = [
             {
                 "title": e["representative"].get("title", ""),
@@ -338,7 +386,8 @@ def run(dry_run: bool = False):
     print(f"\n💾 本週週報已存入 DB（run_date={run_date}）")
     logging.info(f"本週週報存入 DB，run_date={run_date}")
 
-    send_email(run_date, total, total_events, path)
+    send_email(run_date, total, total_events, path,
+               total_unclassified=total_unclassified, unclassified_events=len(unclassified_events))
 
     # 寄信與 DB 寫入都完成後才寫警告檔；程式仍以 0 結束，由 workflow 最後一步判定失敗
     if warnings:

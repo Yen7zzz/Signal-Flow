@@ -39,10 +39,10 @@ python test_track_topics.py         # test topic signal tracking
 **Two-stage pipeline:**
 
 **Pipeline A** (daily ingestion, `pipeline_a_transformer.py`):
-RSS feeds → feedparser → Transformer zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`) → MD5 deduplication → SQLite → full-text scraping (trafilatura / newspaper3k fallback)
+RSS feeds → feedparser (title blocklist) → MD5 deduplication (URLs already in DB are skipped before classification) → Transformer zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`) → SQLite → full-text scraping (trafilatura / newspaper3k fallback). Articles whose top score is below `config.CLASSIFIER_THRESHOLD` (0.4) are not dropped: they are stored with category `config.UNCLASSIFIED_CATEGORY` ("未分類") and skip full-text scraping. The run ends by printing fetched / blocklisted / already-in-DB / new classified / new 未分類 counts.
 
 **Pipeline B** (weekly output):
-SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, `distance_threshold=0.40`, `metric="cosine"`, `linkage="average"`) → topic signal tracking (local keyword/semantic matching, `TOPIC_SIMILARITY_THRESHOLD=0.4`) → structured Markdown evidence pack (`digests/YYYY-MM-DD.md`) → emailed as attachment via Gmail SMTP. No LLM calls, no summarization, ranking, or judgment — raw data only, for downstream Claude cross-validation.
+SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, `distance_threshold=0.40`, `metric="cosine"`, `linkage="average"`) → topic signal tracking (local keyword/semantic matching, `TOPIC_SIMILARITY_THRESHOLD=0.4`) → structured Markdown evidence pack (`digests/YYYY-MM-DD.md`) → emailed as attachment via Gmail SMTP. No LLM calls, no summarization, ranking, or judgment — raw data only, for downstream Claude cross-validation. 未分類 articles are clustered separately and rendered in a compact section (title, source + tier, link, related titles) at the very end, after topic signals; they are excluded from topic signals, the article/event counts, full-text coverage, and the `MIN_WEEKLY_ARTICLES` check.
 
 **Key files:**
 - `config.py` — central config: credentials, feed URLs, `DB_PATH`, `TOP_N`
@@ -50,12 +50,12 @@ SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, `distance_
 - `classifier.py` — Hugging Face zero-shot classifier (`cross-encoder/nli-MiniLM2-L6-H768`); uses English category labels for multilingual model compatibility
 - `clusterer.py` — AgglomerativeClustering on sentence embeddings (`all-MiniLM-L6-v2`) to group related articles
 - `scraper.py` — full-text extraction via trafilatura with newspaper3k fallback
-- `pipeline_a_transformer.py` — daily RSS fetch → classifier filtering → full-text scraping before DB insert
+- `pipeline_a_transformer.py` — daily RSS fetch → classification (low scores stored as 未分類) → full-text scraping for classified articles
 - `pipeline_b.py` — cluster → build Markdown evidence pack → save to `digests/` → email as attachment via SMTP
 - `diagnose_fulltext.py` — diagnostic tool for full-text scraping coverage
 - `test_scraper.py` — scraper unit tests
 - `test_track_topics.py` — topic signal tracking tests
-- `evaluate_threshold.py` — shows per-article scores and retention rates to tune `THRESHOLD`
+- `evaluate_threshold.py` — shows per-article scores and retention rates to tune `config.CLASSIFIER_THRESHOLD`
 
 ## CI/CD (GitHub Actions)
 
@@ -70,7 +70,7 @@ Secrets required in GitHub repo: `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIV
 CREATE TABLE articles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     hash TEXT UNIQUE,       -- MD5(URL) for deduplication
-    category TEXT NOT NULL, -- Finance / Technology / Politics
+    category TEXT NOT NULL, -- 財經 / 科技 / 政治 / 未分類
     title TEXT NOT NULL,
     summary TEXT,
     url TEXT NOT NULL,

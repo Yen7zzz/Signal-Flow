@@ -77,6 +77,11 @@ SOURCE_TIERS = {
 }
 SOURCE_TIER_DEFAULT = 3   # 未列出的來源預設值
 
+# 分類器信心門檻：top1 分數（三分類 softmax）低於此值的文章存為 UNCLASSIFIED_CATEGORY，
+# 不抓全文、不計入訊號追蹤與 MIN_WEEKLY_ARTICLES
+CLASSIFIER_THRESHOLD = 0.4
+UNCLASSIFIED_CATEGORY = "未分類"
+
 CLUSTER_DISTANCE_THRESHOLD = 0.40   # 校準結果，對應 cosine similarity 0.60
 MIN_WEEKLY_ARTICLES = 400   # 正常每週約 880 篇，門檻約為一半，用來偵測每日收集連續失敗
 GITHUB_DIGEST_BASE_URL = "https://github.com/Yen7zzz/Signal-Flow/blob/main/digests/"

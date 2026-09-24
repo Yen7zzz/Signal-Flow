@@ -3,7 +3,7 @@
 #
 # 跟原本 pipeline_a.py 的差別：
 # 舊版：存所有文章進 DB，讓 GPT 自己篩
-# 新版：先用 Transformer 判斷語意相關性，只存通過的文章
+# 新版：先用 Transformer 判斷語意分類，低於門檻的文章存為「未分類」（不抓全文）
 # ============================================================
 
 import feedparser
@@ -15,7 +15,10 @@ from database import init_db, save_article, article_exists, update_full_text
 from classifier import NewsClassifier
 from scraper import fetch_full_text
 from cleanup_fulltext import clear_old_fulltext
-from config import RSS_FEEDS, TITLE_BLOCKLIST, TITLE_BLOCKLIST_PATTERNS, FULLTEXT_RETENTION_DAYS
+from config import (
+    RSS_FEEDS, TITLE_BLOCKLIST, TITLE_BLOCKLIST_PATTERNS, FULLTEXT_RETENTION_DAYS,
+    CLASSIFIER_THRESHOLD, UNCLASSIFIED_CATEGORY,
+)
 import os
 
 os.makedirs("logs", exist_ok=True)  # 加這行
@@ -25,15 +28,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
-
-# ── 重要設定 ──────────────────────────────────────────────────
-# 信心分數門檻：
-#   0.3 → 寬鬆，保留多，但可能有雜訊
-#   0.4 → 平衡，推薦預設值
-#   0.6 → 嚴格，保留少，但精準
-#
-# 建議先用 0.3 跑一次，看看輸出，再逐步調高
-THRESHOLD = 0.4
 
 
 def is_blocklisted_title(title: str) -> bool:
@@ -46,8 +40,8 @@ def is_blocklisted_title(title: str) -> bool:
     return False
 
 
-def parse_feed(category: str, feed_url: str) -> list[dict]:
-    """解析單一 RSS feed，回傳文章清單"""
+def parse_feed(category: str, feed_url: str) -> tuple[list[dict], int]:
+    """解析單一 RSS feed，回傳（文章清單, 黑名單擋掉篇數）"""
     try:
         feed = feedparser.parse(feed_url)
         articles = []
@@ -73,10 +67,10 @@ def parse_feed(category: str, feed_url: str) -> list[dict]:
                 })
         if blocked_count:
             print(f"      🚫 {feed_url[:50]}... 共擋掉 {blocked_count} 篇黑名單標題")
-        return articles
+        return articles, blocked_count
     except Exception as e:
         logging.error(f"❌ 解析失敗 {feed_url}: {e}")
-        return []
+        return [], 0
 
 
 def run():
@@ -89,9 +83,12 @@ def run():
     # 載入 Transformer 模型（只載入一次，所有分類共用）
     classifier = NewsClassifier()
 
-    total_fetched = 0
-    total_saved   = 0
-    newly_saved_urls = []   # 收集本次新存入的 URL，供全文抓取使用
+    total_fetched      = 0   # 通過黑名單後的文章數
+    total_blocked      = 0   # 黑名單擋掉
+    total_existing     = 0   # 已在 DB（含同一輪其他 feed 已存過的重複 URL）
+    total_classified   = 0   # 新存入，正常分類
+    total_unclassified = 0   # 新存入，低於門檻歸入「未分類」
+    newly_saved_urls = []   # 收集本次新存入且正常分類的 URL，供全文抓取使用（未分類不抓全文）
 
     for category, feed_urls in RSS_FEEDS.items():
         print(f"\n📂 分類：{category}")
@@ -99,32 +96,44 @@ def run():
         # Step 1：抓所有 RSS 文章
         raw_articles = []
         for url in feed_urls:
-            articles = parse_feed(category, url)
+            articles, blocked = parse_feed(category, url)
             raw_articles.extend(articles)
+            total_blocked += blocked
             print(f"   📥 抓到 {len(articles)} 篇 from {url[:50]}...")
 
         total_fetched += len(raw_articles)
-        print(f"\n   🔍 Transformer 語意篩選中（threshold={THRESHOLD}）...")
+        print(f"\n   🔍 Transformer 語意分類中（threshold={CLASSIFIER_THRESHOLD}，低於門檻存為「{UNCLASSIFIED_CATEGORY}」）...")
 
-        # Step 2：Transformer 篩選
+        # Step 2：只對 DB 裡還沒有的文章分類，再存入資料庫
         # 注意：這裡不限制在原本的 category，讓 Transformer 重新判斷
         # 有時候一篇「台積電財報」放在科技 RSS，但 Transformer 會同時標記財經
-        relevant_articles = classifier.batch_classify(raw_articles, threshold=THRESHOLD)
+        for article in raw_articles:
+            if article_exists(article["url"]):
+                total_existing += 1
+                continue
 
-        # Step 3：存入資料庫
-        for article in relevant_articles:
-            if not article_exists(article["url"]):
-                saved = save_article(
-                    category  = article["category"],   # Transformer 判斷的分類
-                    title     = article["title"],
-                    url       = article["url"],
-                    summary   = article["summary"],
-                    source    = article["source"],
-                    published = article["published"],
-                )
-                if saved:
-                    total_saved += 1
-                    newly_saved_urls.append(article["url"])
+            text = f"{article['title']}. {article['summary']}"
+            result = classifier.classify(text, CLASSIFIER_THRESHOLD)
+            is_relevant = result["is_relevant"]
+            saved = save_article(
+                category  = result["category"] if is_relevant else UNCLASSIFIED_CATEGORY,
+                title     = article["title"],
+                url       = article["url"],
+                summary   = article["summary"],
+                source    = article["source"],
+                published = article["published"],
+            )
+            if not saved:
+                total_existing += 1
+                continue
+
+            if is_relevant:
+                total_classified += 1
+                newly_saved_urls.append(article["url"])
+                print(f"  ✅ [{result['score']:.2f}] {result['category']}：{article['title'][:50]}...")
+            else:
+                total_unclassified += 1
+                print(f"  ❔ [{result['score']:.2f}] {UNCLASSIFIED_CATEGORY}：{article['title'][:50]}...")
 
     # ── Step 4：並行抓取全文（只針對本次新存入的文章）──────────────
     if newly_saved_urls:
@@ -169,10 +178,13 @@ def run():
 
     print(f"\n{'='*50}")
     print(f"🎉 完成！")
-    print(f"   抓到：{total_fetched} 篇")
-    print(f"   通過篩選：{total_saved} 篇")
-    print(f"   過濾掉：{total_fetched - total_saved} 篇雜訊")
-    logging.info(f"Pipeline A 完成，抓 {total_fetched} 篇，存 {total_saved} 篇")
+    print(f"   抓到：{total_fetched} 篇（另有黑名單擋掉 {total_blocked} 篇）")
+    print(f"   已在 DB：{total_existing} 篇")
+    print(f"   新存入：{total_classified} 篇正常分類，{total_unclassified} 篇{UNCLASSIFIED_CATEGORY}")
+    logging.info(
+        f"Pipeline A 完成，抓 {total_fetched} 篇（黑名單 {total_blocked}），已在 DB {total_existing}，"
+        f"新分類 {total_classified}，新{UNCLASSIFIED_CATEGORY} {total_unclassified}"
+    )
 
 
 if __name__ == "__main__":

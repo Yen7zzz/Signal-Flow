@@ -13,7 +13,7 @@ SignalFlow/
 ├── classifier.py                ← Transformer zero-shot 分類器
 ├── clusterer.py                 ← AgglomerativeClustering 文章分群
 ├── scraper.py                   ← 全文抓取（trafilatura + newspaper3k fallback）
-├── pipeline_a_transformer.py    ← 每日：RSS 抓取 → 語意篩選 + 全文抓取 → 存 DB
+├── pipeline_a_transformer.py    ← 每日：RSS 抓取 → 語意分類（低分存為「未分類」）+ 全文抓取 → 存 DB
 ├── pipeline_b.py                ← 每週：分群 → 產出 Evidence Pack → 寄信
 ├── evaluate_threshold.py        ← 調整分類器門檻工具
 ├── diagnose_fulltext.py         ← 全文抓取診斷工具
@@ -59,14 +59,15 @@ export EMAIL_RECEIVERS=a@example.com,b@example.com
 ## 手動執行
 
 ```bash
-# Pipeline A：抓新聞（含語意篩選）
+# Pipeline A：抓新聞（含語意分類）
+# 結束時印出：抓到 N 篇（另有黑名單擋掉 B 篇）／已在 DB E 篇／新存入 C 篇正常分類、U 篇未分類
 python pipeline_a_transformer.py
 
 # Pipeline B：生成週報並寄信
 python pipeline_b.py
 
 # 工具
-python evaluate_threshold.py   # 調整分類門檻
+python evaluate_threshold.py   # 調整分類門檻（config.CLASSIFIER_THRESHOLD）
 python diagnose_fulltext.py    # 診斷全文抓取覆蓋率
 ```
 
@@ -77,17 +78,21 @@ python diagnose_fulltext.py    # 診斷全文抓取覆蓋率
 ```
 Pipeline A（每日 UTC 22:00）
   RSS feeds
-    → feedparser 解析
-    → Transformer zero-shot 分類篩選（cross-encoder/nli-MiniLM2-L6-H768）
-    → MD5 去重
+    → feedparser 解析（標題黑名單擋掉導購文）
+    → MD5 去重（已在 DB 的文章跳過，不重新分類）
+    → Transformer zero-shot 分類（cross-encoder/nli-MiniLM2-L6-H768）
+      最高分低於 config.CLASSIFIER_THRESHOLD（0.4）者存為「未分類」，不丟棄
     → SQLite 儲存
-    → 全文抓取（trafilatura / newspaper3k）
+    → 全文抓取（trafilatura / newspaper3k；「未分類」不抓）
 
 Pipeline B（每週日 UTC 12:17（台北週日 20:17））
   SQLite 撈最近 7 天文章
     → AgglomerativeClustering 語意分群（all-MiniLM-L6-v2，distance_threshold=0.40, metric=cosine, linkage=average）
-    → 訊號追蹤（本機關鍵字/語意比對）
+      各分類分別聚類；「未分類」也獨立聚類
+    → 訊號追蹤（本機關鍵字/語意比對；不含「未分類」）
     → 產出結構化 Markdown Evidence Pack（digests/YYYY-MM-DD.md，檔名為 runner 執行當下的 UTC 日期）
+      「未分類」以精簡格式（標題、來源、連結、同群標題）放在報告最後，
+      不計入文章數、全文覆蓋率與 MIN_WEEKLY_ARTICLES 門檻
     → 以附件寄出（Gmail SMTP）
   零 LLM，不做摘要、排名或判斷
 ```
