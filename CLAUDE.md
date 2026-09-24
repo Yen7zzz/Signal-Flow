@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SignalFlow is an automated RSS news aggregation system. It collects news from 13+ RSS feeds daily (Finance, Technology, Politics categories), clusters similar articles locally, and emails a structured Markdown "evidence pack" every Monday morning (TST).
+SignalFlow is an automated RSS news aggregation system. It collects news from 13+ RSS feeds daily (Finance, Technology, Politics categories), clusters similar articles locally, and emails a structured Markdown "evidence pack" every Sunday evening (Taipei time).
 
 **AI backend:** none. The pipeline calls zero LLM APIs — classification uses a local Hugging Face zero-shot classifier, clustering uses local sentence-transformer embeddings, and topic tracking is local keyword/semantic matching. The evidence pack is meant to be fed into a downstream Claude conversation for cross-checking, not to be a pre-written human-readable summary.
 
@@ -60,7 +60,7 @@ SQLite (last 7 days) → AgglomerativeClustering (`all-MiniLM-L6-v2`, `distance_
 ## CI/CD (GitHub Actions)
 
 - `.github/workflows/daily_collect.yml` — runs `pipeline_a_transformer.py` at UTC 22:00 daily, then auto-commits updated `data/news.db` to main
-- `.github/workflows/weekly_digest.yml` — runs `pipeline_b.py` every Sunday at UTC 22:00 (= Taiwan Monday 06:00)
+- `.github/workflows/weekly_digest.yml` — runs `pipeline_b.py` every Sunday at UTC 12:17 (= Taipei Sunday 20:17); the digest filename (`digests/YYYY-MM-DD.md`) is the runner's UTC date at execution time
 
 Secrets required in GitHub repo: `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVERS`, `GEMINI_API_KEY` (in workflow env; not currently required by pipelines).
 

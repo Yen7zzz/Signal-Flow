@@ -2,8 +2,8 @@ name: 📧 每週新聞週報
 
 on:
   schedule:
-    # 台北時間（UTC+8）：週日 22:00
-    - cron: '0 14 * * 0'  # UTC 週日 14:00 = 台灣週日 22:00
+    # 台北時間（UTC+8）：週日 20:17
+    - cron: '17 12 * * 0'  # UTC 週日 12:17 = 台北週日 20:17，避開整點排程壅塞，並遠離 UTC 換日
   workflow_dispatch:
 
 permissions:

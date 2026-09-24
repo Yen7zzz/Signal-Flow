@@ -1,6 +1,6 @@
 # 📰 SignalFlow — AI 驅動的新聞週報系統
 
-每天自動抓新聞、語意分群，每週一早上寄出結構化 Evidence Pack Markdown Email（零 LLM，供下游 Claude 對話交叉驗證）。
+每天自動抓新聞、語意分群，每週日晚上寄出結構化 Evidence Pack Markdown Email（零 LLM，供下游 Claude 對話交叉驗證）。
 
 ---
 
@@ -22,7 +22,7 @@ SignalFlow/
 ├── requirements.txt
 ├── .github/workflows/
 │   ├── daily_collect.yml        ← 每日 UTC 22:00 執行 Pipeline A
-│   └── weekly_digest.yml        ← 每週日 UTC 22:00（台灣週一 06:00）執行 Pipeline B
+│   └── weekly_digest.yml        ← 每週日 UTC 12:17（台北週日 20:17）執行 Pipeline B
 ├── data/                        ← news.db 自動建立並由 CI 維護
 └── logs/                        ← 執行紀錄
 ```
@@ -83,11 +83,11 @@ Pipeline A（每日 UTC 22:00）
     → SQLite 儲存
     → 全文抓取（trafilatura / newspaper3k）
 
-Pipeline B（每週日 UTC 22:00 = 台灣週一 06:00）
+Pipeline B（每週日 UTC 12:17（台北週日 20:17））
   SQLite 撈最近 7 天文章
     → AgglomerativeClustering 語意分群（all-MiniLM-L6-v2，distance_threshold=0.40, metric=cosine, linkage=average）
     → 訊號追蹤（本機關鍵字/語意比對）
-    → 產出結構化 Markdown Evidence Pack（digests/YYYY-MM-DD.md）
+    → 產出結構化 Markdown Evidence Pack（digests/YYYY-MM-DD.md，檔名為 runner 執行當下的 UTC 日期）
     → 以附件寄出（Gmail SMTP）
   零 LLM，不做摘要、排名或判斷
 ```
