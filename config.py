@@ -78,6 +78,7 @@ SOURCE_TIERS = {
 SOURCE_TIER_DEFAULT = 3   # 未列出的來源預設值
 
 CLUSTER_DISTANCE_THRESHOLD = 0.40   # 校準結果，對應 cosine similarity 0.60
+MIN_WEEKLY_ARTICLES = 400   # 正常每週約 880 篇，門檻約為一半，用來偵測每日收集連續失敗
 GITHUB_DIGEST_BASE_URL = "https://github.com/Yen7zzz/Signal-Flow/blob/main/digests/"
 
 # 標題黑名單：命中者視為內容農場/導購頁面，於 Transformer 分類前先行過濾

@@ -48,3 +48,12 @@ jobs:
           git diff --staged --quiet || git commit -m "📧 週報生成 $(date '+%Y-%m-%d')"
           git pull --rebase
           git push
+
+      - name: 檢查資料警告
+        run: |
+          if [ -f digest_warnings.txt ]; then
+            echo "::error::本週週報有資料警告"
+            cat digest_warnings.txt
+            exit 1
+          fi
+          echo "無資料警告"

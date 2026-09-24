@@ -216,3 +216,4 @@ logs/
 
 # IDE 專案設定檔（__pycache__/ 與 *.pyc 已被上方的 *.py[codz] 規則涵蓋）
 .idea/
+digest_warnings.txt

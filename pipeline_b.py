@@ -33,6 +33,7 @@ logging.basicConfig(
 )
 
 FULLTEXT_MIN_LEN = 200   # full_text 超過此長度才視為「已抓取」
+WARNINGS_FILE = "digest_warnings.txt"   # 有軟警告時寫入，供 workflow 最後一步判定失敗
 
 
 def get_source_tier(source: str) -> int:
@@ -76,17 +77,23 @@ def dedup_sources(articles: list[dict]) -> str:
     return " / ".join(f"{s} (T{get_source_tier(s)})" for s in seen)
 
 
-def render_markdown(clustered_by_category: dict, stats: dict, topic_signals: dict | None = None) -> str:
+def render_markdown(clustered_by_category: dict, stats: dict, topic_signals: dict | None = None,
+                    warnings: list[str] | None = None) -> str:
     """
     產出 Evidence Pack Markdown。
     clustered_by_category: {category: events}，events 是 clusterer.cluster_articles() 的輸出
     stats: {run_date, start_date, end_date, total_articles, total_events, fulltext_coverage}
     topic_signals: {topic: {"current": int, "previous": int|None, "trend": str}}
+    warnings: 本週資料警告（聚類失敗、文章數過少等），有才輸出警告區塊
     只搬運與標註，不改寫、不排名、不下判斷、不壓縮。
     """
     lines = []
     lines.append(f"# SignalFlow Evidence Pack — {stats['run_date']}")
     lines.append("")
+    if warnings:
+        for w in warnings:
+            lines.append(f"> ⚠️ 本週資料警告：{w}")
+        lines.append("")
     lines.append("> **資料性質**：未經 LLM 處理的原始新聞聚合。所有標題與摘要皆為媒體原文，未經改寫。")
     lines.append(f"> **收錄期間**：{stats['start_date']} ~ {stats['end_date']}")
     lines.append(f"> **原始文章數**：{stats['total_articles']}｜聚類後事件數：{stats['total_events']}")
@@ -230,9 +237,13 @@ def run(dry_run: bool = False):
     print(f"\n📦 共撈到 {total} 篇文章")
 
     if not all_articles:
-        print("⚠️  無文章，Pipeline B 結束")
-        logging.warning("Pipeline B：無文章可處理")
-        return
+        print("❌ 無文章，Pipeline B 失敗結束")
+        logging.error("Pipeline B：無文章可處理")
+        sys.exit(1)
+
+    warnings: list[str] = []
+    if total < config.MIN_WEEKLY_ARTICLES:
+        warnings.append(f"本週文章數 {total} 篇，低於門檻 {config.MIN_WEEKLY_ARTICLES} 篇，每日收集可能連續失敗")
 
     by_category: dict[str, list[dict]] = defaultdict(list)
     for a in all_articles:
@@ -246,7 +257,7 @@ def run(dry_run: bool = False):
     except Exception as e:
         print(f"❌ NewsClusterer 初始化失敗：{e}")
         logging.error(f"NewsClusterer 初始化失敗：{e}")
-        return
+        sys.exit(1)
 
     clustered_by_category: dict[str, list[dict]] = {}
     for category, arts in by_category.items():
@@ -259,6 +270,7 @@ def run(dry_run: bool = False):
             print(f"   ❌ 聚類 {category} 失敗：{e}")
             logging.error(f"cluster_articles 失敗 ({category})：{e}")
             clustered_by_category[category] = []
+            warnings.append(f"{category} 聚類失敗（{len(arts)} 篇未列入）：{e}")
 
     print("\n📊 各分類事件數：" + "、".join(
         f"{cat} {len(evts)} 個事件" for cat, evts in clustered_by_category.items()
@@ -288,9 +300,17 @@ def run(dry_run: bool = False):
         "fulltext_coverage": fulltext_coverage,
     }
 
-    markdown = render_markdown(clustered_by_category, stats, topic_signals=topic_signals)
+    markdown = render_markdown(clustered_by_category, stats, topic_signals=topic_signals, warnings=warnings)
     path = save_digest_file(markdown, run_date)
     print(f"📄 Evidence Pack 已存：{path}")
+
+    if warnings:
+        print(f"\n⚠️  本週資料警告（{len(warnings)} 條）：")
+        for w in warnings:
+            print(f"   - {w}")
+            logging.warning(f"本週資料警告：{w}")
+    else:
+        print("\n✅ 無資料警告")
 
     if dry_run:
         preview_lines = markdown.splitlines()[:60]
@@ -319,6 +339,12 @@ def run(dry_run: bool = False):
     logging.info(f"本週週報存入 DB，run_date={run_date}")
 
     send_email(run_date, total, total_events, path)
+
+    # 寄信與 DB 寫入都完成後才寫警告檔；程式仍以 0 結束，由 workflow 最後一步判定失敗
+    if warnings:
+        with open(WARNINGS_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(warnings) + "\n")
+        print(f"⚠️  資料警告已寫入 {WARNINGS_FILE}")
 
     print(f"\n🎉 Pipeline B 完成！共 {total} 篇文章 → {total_events} 個事件")
     logging.info(f"Pipeline B 完成，{total} 篇 → {total_events} 個事件")
