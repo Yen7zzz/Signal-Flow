@@ -36,7 +36,6 @@ RSS_FEEDS = {
     "Politics": [
         "https://feeds.bbci.co.uk/news/world/rss.xml",
         "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-        "https://feeds.reuters.com/reuters/worldNews",
     ],
 }
 
